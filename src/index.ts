@@ -12,8 +12,6 @@ import express, { type Request, type Response } from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
-import { createThirdwebClient } from "thirdweb";
-import { facilitator as createThirdwebFacilitator } from "thirdweb/x402";
 import { getReceiveAddress } from "./wallet.js";
 import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
 import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
@@ -27,36 +25,29 @@ import { recordSale, priceToUsd, stats } from "./stats.js";
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`; // CAIP-2, Base Sepolia default
-const FACILITATOR_URL = process.env.FACILITATOR_URL?.trim() || "https://x402.org/facilitator";
 const PAY_TO = getReceiveAddress();
-
-// thirdweb facilitator (mainnet, gasless). Active only when BOTH are set.
-const THIRDWEB_SECRET_KEY = process.env.THIRDWEB_SECRET_KEY?.trim();
-const THIRDWEB_SERVER_WALLET = process.env.THIRDWEB_SERVER_WALLET?.trim();
-const USE_THIRDWEB = !!(THIRDWEB_SECRET_KEY && THIRDWEB_SERVER_WALLET);
 
 const IS_MAINNET = NETWORK === "eip155:8453";
 const NET_LABEL = IS_MAINNET ? "Base mainnet (REAL money)" : "Base Sepolia (testnet)";
-const FACILITATOR_LABEL = USE_THIRDWEB ? "thirdweb (api.thirdweb.com/v1/payments/x402)" : FACILITATOR_URL;
 
-// ─── Go-live safety guards ────────────────────────────────────────────────
-// Refuse to run a config that would advertise real-money payments against the
-// testnet facilitator (or claim testnet while pointed at a mainnet facilitator).
-const FAC_IS_TESTNET = /x402\.org\/facilitator/.test(FACILITATOR_URL);
-if (IS_MAINNET && !USE_THIRDWEB && FAC_IS_TESTNET) {
-  console.error(
-    "\n  FATAL: NETWORK is Base mainnet but no real-money facilitator is configured.\n" +
-      "  Set THIRDWEB_SECRET_KEY + THIRDWEB_SERVER_WALLET to settle real USDC via thirdweb.\n",
-  );
-  process.exit(1);
-}
-if (USE_THIRDWEB && THIRDWEB_SERVER_WALLET && !/^0x[a-fA-F0-9]{40}$/.test(THIRDWEB_SERVER_WALLET)) {
-  console.error(`\n  FATAL: THIRDWEB_SERVER_WALLET is not a valid EVM address: ${THIRDWEB_SERVER_WALLET}\n`);
-  process.exit(1);
-}
-if (!IS_MAINNET && USE_THIRDWEB) {
-  console.warn("  WARN: thirdweb facilitator is set but NETWORK is testnet — set NETWORK=eip155:8453 to earn real USDC.");
-}
+// Facilitators (keyless, verified 2026-07-18 to advertise the network's "exact"
+// scheme). MULTIPLE on mainnet for redundancy: a single small operator flaking
+// must not take the service down. FACILITATOR_URL, if set, is tried first.
+const MAINNET_FACILITATORS = [
+  "https://facilitator.payai.network",
+  "https://facilitator.xpay.sh",
+  "https://facilitator.0xarchive.io",
+];
+const FACILITATOR_URLS: string[] = (() => {
+  const override = process.env.FACILITATOR_URL?.trim();
+  if (IS_MAINNET) {
+    const list = override && !/x402\.org/.test(override) ? [override, ...MAINNET_FACILITATORS] : [...MAINNET_FACILITATORS];
+    return [...new Set(list)];
+  }
+  return [override || "https://x402.org/facilitator"];
+})();
+const FACILITATOR_LABEL = FACILITATOR_URLS.length > 1 ? `${FACILITATOR_URLS.length} redundant (${FACILITATOR_URLS[0]}…)` : FACILITATOR_URLS[0];
+
 if (!/^0x[a-fA-F0-9]{40}$/.test(PAY_TO)) {
   console.warn(`  WARN: PAY_TO does not look like a valid EVM address: ${PAY_TO}`);
 }
@@ -80,19 +71,11 @@ const CATALOG = [
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
-// thirdweb runs a hosted facilitator; its {url, createAuthHeaders} slot straight
-// into @x402's HTTPFacilitatorClient. Settlement is gasless via thirdweb's server
-// wallet. No secret key = keyless testnet facilitator.
-function buildFacilitator(): HTTPFacilitatorClient {
-  if (USE_THIRDWEB) {
-    const twClient = createThirdwebClient({ secretKey: THIRDWEB_SECRET_KEY! });
-    const tw = createThirdwebFacilitator({ client: twClient, serverWalletAddress: THIRDWEB_SERVER_WALLET! });
-    return new HTTPFacilitatorClient({ url: tw.url, createAuthHeaders: tw.createAuthHeaders });
-  }
-  return new HTTPFacilitatorClient({ url: FACILITATOR_URL });
-}
-const facilitator = buildFacilitator();
-const resourceServer = new x402ResourceServer(facilitator).register(NETWORK, new ExactEvmScheme());
+// Register ALL configured facilitators. x402ResourceServer aggregates their
+// supported kinds, so as long as ANY one advertises this network's "exact"
+// scheme, paid routes work — one flaky operator can't break settlement.
+const facilitators = FACILITATOR_URLS.map((url) => new HTTPFacilitatorClient({ url }));
+const resourceServer = new x402ResourceServer(facilitators).register(NETWORK, new ExactEvmScheme());
 
 function accept(price: string, description: string) {
   return {
@@ -160,7 +143,7 @@ function freeRateLimit(req: Request, res: Response, next: () => void) {
 // Free routes — defined BEFORE the paywall so they never get charged.
 app.get("/health", freeRateLimit, (_req, res) => res.json({ ok: true, network: NETWORK, payTo: PAY_TO }));
 app.get("/catalog", freeRateLimit, (_req, res) =>
-  res.json({ payTo: PAY_TO, network: NETWORK, facilitator: FACILITATOR_URL, endpoints: CATALOG }),
+  res.json({ payTo: PAY_TO, network: NETWORK, facilitator: FACILITATOR_LABEL, endpoints: CATALOG }),
 );
 app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
 app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
@@ -183,7 +166,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// The paywall. Only the routes listed in `routes` are charged.
+// The paywall. Only the routes listed in `routes` are charged. Startup syncs
+// supported kinds across the REDUNDANT facilitator set — any one advertising
+// this network's "exact" scheme is enough, so a single flaky operator can't
+// break settlement. (Total outage of all facilitators fails the deploy, and
+// Render then keeps the previous healthy build — the correct failsafe.)
 app.use(paymentMiddleware(routes, resourceServer));
 
 // Paid handlers. Only run AFTER payment has settled (paywall above).
