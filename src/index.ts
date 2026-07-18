@@ -208,6 +208,9 @@ async function deliver(
 ) {
   try {
     const data = await fn(); // SWR cache makes this near-instant once warm
+    // Never bill for an empty payload. Source fns throw on junk (→ catch below),
+    // this is the belt-and-braces guard mirroring serve() in crypto.ts.
+    if (data == null) return void res.status(502).json({ error: "upstream_unavailable" });
     recordSale(route, priceUsd, symbol); // count only successful deliveries
     res.json({ ...data, source: "x402-seller" }); // don't reveal the upstream supply chain
   } catch (err: any) {

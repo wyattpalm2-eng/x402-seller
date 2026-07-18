@@ -76,9 +76,13 @@ export async function cryptoPrice(symbol: string): Promise<any> {
   const pair = s.includes("-") ? s : `${s}-USD`;
   return cached(`price:${pair}`, async () => {
   const j = await getJson(`https://api.coinbase.com/v2/prices/${pair}/spot`);
+  const price = Number(j?.data?.amount);
+  // Coinbase can answer 200 with a missing/garbage amount. Throw rather than
+  // return NaN: junk is never cached, and the caller's catch → uncharged 502.
+  if (!Number.isFinite(price)) throw new Error(`no usable price for ${pair}`);
   return {
     symbol: pair,
-    price_usd: Number(j?.data?.amount),
+    price_usd: price,
     base: j?.data?.base,
     currency: j?.data?.currency,
     source: "coinbase",
@@ -102,6 +106,8 @@ export async function stockQuote(ticker: string): Promise<any> {
   const meta = j?.chart?.result?.[0]?.meta;
   if (!meta || meta.regularMarketPrice == null) throw new Error(`unknown ticker "${ticker}"`);
   const price = Number(meta.regularMarketPrice);
+  // Guard against a 200 with a non-numeric price: never cache/bill a NaN quote.
+  if (!Number.isFinite(price)) throw new Error(`no usable price for "${ticker}"`);
   const prev = Number(meta.chartPreviousClose ?? meta.previousClose);
   return {
     symbol: meta.symbol ?? t,
@@ -141,6 +147,8 @@ export async function topMarkets(limit = 10): Promise<any> {
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd` +
     `&order=market_cap_desc&per_page=${n}&page=1&price_change_percentage=24h`;
   const arr = await getJson(url);
+  // Empty/garbage upstream → throw so we don't bill for a zero-coin snapshot.
+  if (!Array.isArray(arr) || arr.length === 0) throw new Error("no market data");
   return {
     count: arr.length,
     coins: arr.map((c: any) => ({
