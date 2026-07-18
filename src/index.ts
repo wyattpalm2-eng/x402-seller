@@ -21,7 +21,7 @@ import { recordSale, priceToUsd, stats } from "./stats.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
-const NETWORK = process.env.NETWORK?.trim() || "eip155:84532"; // Base Sepolia
+const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`; // CAIP-2, Base Sepolia default
 const FACILITATOR_URL = process.env.FACILITATOR_URL?.trim() || "https://x402.org/facilitator";
 const PAY_TO = getReceiveAddress();
 

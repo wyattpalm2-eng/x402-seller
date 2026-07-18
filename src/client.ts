@@ -14,7 +14,7 @@ import { wrapFetchWithPaymentFromConfig, decodePaymentResponseHeader } from "@x4
 import { ExactEvmScheme } from "@x402/evm";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
-const NETWORK = process.env.NETWORK?.trim() || "eip155:84532";
+const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 const TARGET = process.env.TARGET_URL?.trim() || "http://localhost:4021/price?symbol=BTC";
 
 let key = process.env.BUYER_PRIVATE_KEY?.trim();

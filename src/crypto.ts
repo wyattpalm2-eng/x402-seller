@@ -15,7 +15,7 @@ import { cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { recordSale, priceToUsd } from "./stats.js";
 
-const NETWORK = process.env.NETWORK?.trim() || "eip155:84532";
+const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 
 export const PRICE_TOKEN = process.env.PRICE_ONCHAIN_TOKEN || "$0.005";
 export const PRICE_TRENDING = process.env.PRICE_ONCHAIN_TRENDING || "$0.005";

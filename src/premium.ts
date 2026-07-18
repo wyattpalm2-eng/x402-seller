@@ -212,7 +212,7 @@ premiumRouter.get("/signal", async (req: Request, res: Response) => {
 
 // ─── x402 wiring fragments (match index.ts shapes) ──────────────────────────
 
-const NETWORK = process.env.NETWORK?.trim() || "eip155:84532";
+const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 
 /**
  * Paywall routes fragment — same shape as `accept()` in index.ts, and it resolves
