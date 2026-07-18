@@ -1,0 +1,20 @@
+# One-click deploy blueprint for Render (free tier, no card, no SSN).
+# When you're ready for a durable always-on URL:
+#   1. push this folder to a free GitHub repo
+#   2. render.com -> New -> Blueprint -> pick the repo -> Apply
+# Render injects PORT automatically; the server reads process.env.PORT.
+# PAY_TO is your PUBLIC Base address, so it's safe to bake in here for zero config.
+services:
+  - type: web
+    name: x402-seller
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PAY_TO
+        value: "0x72B944dA66263bE35c2a2eDFeF5c525d58fa53Df"
+      - key: NETWORK
+        value: "eip155:84532"          # testnet. flip to eip155:8453 for real money
+      - key: FACILITATOR_URL
+        value: "https://x402.org/facilitator"   # mainnet: https://api.cdp.coinbase.com/platform/v2/x402
