@@ -1,0 +1,15 @@
+name: keep-warm
+# Pings the live service every 10 minutes so Render's free tier never sees
+# 15+ minutes idle and puts it to sleep. An AI agent that hits a sleeping
+# instance eats a ~50s cold start and may just time out — this avoids that.
+# Free: runs on GitHub's own scheduler, no extra account needed.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: curl -fsS --max-time 30 https://x402-seller-m8nx.onrender.com/health
