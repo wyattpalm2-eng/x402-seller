@@ -9,17 +9,43 @@
 
 const TIMEOUT_MS = 8000;
 
-// Tiny in-memory TTL cache so paid buyers rarely hit a dead/slow upstream and
-// repeat calls (same args, within TTL) return instantly. No deps, best-effort.
-const CACHE_TTL_MS = 10_000;
+// Stale-while-revalidate cache. A paying buyer must never block on a cold/slow
+// upstream or eat a 502 when we hold any recent value:
+//   fresh   (< FRESH_MS):        return cached instantly
+//   stale   (< SERVE_STALE_MS):  return stale NOW, refresh in the background
+//   missing (expired/cold):      fetch and await (only the first caller does)
+// In-flight de-dup: concurrent callers for the same key share one upstream call
+// (no thundering herd against Coinbase/Yahoo/CoinGecko). No deps, best-effort.
+const FRESH_MS = 10_000;         // fresh window: serve without refreshing
+const SERVE_STALE_MS = 300_000;  // serve stale up to 5 min while refreshing behind it
 const _cache = new Map<string, { at: number; val: any }>();
+const _inflight = new Map<string, Promise<any>>();
+
+function _refresh<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = _inflight.get(key);
+  if (existing) return existing as Promise<T>;
+  const p = (async () => {
+    try {
+      const val = await fn();
+      _cache.set(key, { at: Date.now(), val });
+      return val;
+    } finally {
+      _inflight.delete(key);
+    }
+  })();
+  _inflight.set(key, p);
+  return p;
+}
 
 async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const hit = _cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.val;
-  const val = await fn();
-  _cache.set(key, { at: Date.now(), val });
-  return val;
+  const age = hit ? Date.now() - hit.at : Infinity;
+  if (hit && age < FRESH_MS) return hit.val;            // fresh
+  if (hit && age < SERVE_STALE_MS) {                    // stale: serve now, refresh behind
+    void _refresh(key, fn).catch(() => {});             // background; keep last-good on failure
+    return hit.val;
+  }
+  return _refresh(key, fn);                             // cold/expired: must await
 }
 
 async function getJson(url: string): Promise<any> {
@@ -33,7 +59,8 @@ async function getJson(url: string): Promise<any> {
 
 /** Spot crypto price from Coinbase's public API. symbol like "BTC" or "ETH-USD". */
 export async function cryptoPrice(symbol: string): Promise<any> {
-  const s = symbol.toUpperCase();
+  const s = symbol.toUpperCase().replace(/[^A-Z0-9-]/g, ""); // sanitize: no path/host injection
+  if (!s) throw new Error("empty symbol");
   const pair = s.includes("-") ? s : `${s}-USD`;
   return cached(`price:${pair}`, async () => {
   const j = await getJson(`https://api.coinbase.com/v2/prices/${pair}/spot`);

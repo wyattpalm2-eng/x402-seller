@@ -15,6 +15,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { getReceiveAddress } from "./wallet.js";
 import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
 import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
+import { recordSale, priceToUsd, stats } from "./stats.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -24,6 +25,25 @@ const PAY_TO = getReceiveAddress();
 
 const IS_MAINNET = NETWORK === "eip155:8453";
 const NET_LABEL = IS_MAINNET ? "Base mainnet (REAL money)" : "Base Sepolia (testnet)";
+
+// ─── Go-live safety guards ────────────────────────────────────────────────
+// Refuse to run a config that would advertise real-money payments against the
+// testnet facilitator (or claim testnet while pointed at a mainnet facilitator).
+const FAC_IS_TESTNET = /x402\.org\/facilitator/.test(FACILITATOR_URL);
+if (IS_MAINNET && FAC_IS_TESTNET) {
+  console.error(
+    "\n  FATAL: NETWORK is Base mainnet but FACILITATOR_URL is the TESTNET facilitator.\n" +
+      "  Buyers would be told to pay real USDC against a testnet settler.\n" +
+      "  Set FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402 (+ CDP keys) first.\n",
+  );
+  process.exit(1);
+}
+if (!IS_MAINNET && !FAC_IS_TESTNET) {
+  console.warn("  WARN: testnet network with a non-testnet facilitator — double-check FACILITATOR_URL.");
+}
+if (!/^0x[a-fA-F0-9]{40}$/.test(PAY_TO)) {
+  console.warn(`  WARN: PAY_TO does not look like a valid EVM address: ${PAY_TO}`);
+}
 
 // Price per call. Cents-to-dollars strings, x402 format.
 const PRICES = {
@@ -89,6 +109,7 @@ app.get("/health", freeRateLimit, (_req, res) => res.json({ ok: true, network: N
 app.get("/catalog", freeRateLimit, (_req, res) =>
   res.json({ payTo: PAY_TO, network: NETWORK, facilitator: FACILITATOR_URL, endpoints: CATALOG }),
 );
+app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
 app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
 
 // The paywall. Only the routes above in `routes` are charged.
@@ -98,17 +119,33 @@ app.use(paymentMiddleware(routes, resourceServer));
 app.use(premiumRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
-app.get("/price", async (req, res) => deliver(res, () => cryptoPrice(String(req.query.symbol || "BTC"))));
-app.get("/stock", async (req, res) => deliver(res, () => stockQuote(String(req.query.ticker || "AAPL"))));
-app.get("/markets", async (req, res) => deliver(res, () => topMarkets(Number(req.query.limit || 10))));
+app.get("/price", (req, res) => {
+  const symbol = String(req.query.symbol || "BTC");
+  return deliver(res, "GET /price", priceToUsd(PRICES.price), symbol, () => cryptoPrice(symbol));
+});
+app.get("/stock", (req, res) => {
+  const ticker = String(req.query.ticker || "AAPL");
+  return deliver(res, "GET /stock", priceToUsd(PRICES.stock), ticker, () => stockQuote(ticker));
+});
+app.get("/markets", (req, res) => {
+  const limit = Number(req.query.limit || 10);
+  return deliver(res, "GET /markets", priceToUsd(PRICES.markets), `top${limit}`, () => topMarkets(limit));
+});
 
-async function deliver(res: Response, fn: () => Promise<any>) {
+async function deliver(
+  res: Response,
+  route: string,
+  priceUsd: number,
+  symbol: string | undefined,
+  fn: () => Promise<any>,
+) {
   try {
-    res.json(await fn());
+    const data = await fn(); // SWR cache makes this near-instant once warm
+    recordSale(route, priceUsd, symbol); // count only successful deliveries
+    res.json(data);
   } catch (err: any) {
-    // NOTE: payment already settled here. Upstream failure = buyer paid, got an
-    // error. For production, validate availability before settling or issue a
-    // refund. Fine for v0.1 (free upstreams are reliable).
+    // Payment settled but the upstream failed. The SWR cache serves last-good for
+    // 5 min, so this only fires on a truly cold+dead upstream. Not counted as a sale.
     res.status(502).json({ error: "upstream_unavailable", detail: err?.message ?? String(err) });
   }
 }

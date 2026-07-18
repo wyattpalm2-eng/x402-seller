@@ -17,7 +17,7 @@ Going live is a one-line network change.
 | `GET /price?symbol=BTC` | $0.001 | spot crypto price | Coinbase (free) |
 | `GET /stock?ticker=AAPL` | $0.002 | stock/ETF quote | Yahoo Finance (free) |
 | `GET /markets?limit=10` | $0.005 | top crypto snapshot | CoinGecko (free) |
-| `GET /` `GET /health` `GET /catalog` | free | storefront / status / machine-readable catalog | — |
+| `GET /` `GET /health` `GET /catalog` `GET /stats` | free | storefront / status / catalog / live revenue + usage | — |
 
 Hit a paid route with no payment and you get `HTTP 402` + instructions telling the
 caller exactly how much USDC to pay, in what token, to which address. An

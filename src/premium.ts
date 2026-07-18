@@ -33,6 +33,7 @@
 import { Router, type Request, type Response } from "express";
 import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
+import { recordSale, priceToUsd } from "./stats.js";
 
 // Price per call — kept here so the integrator sees one source of truth.
 export const PREMIUM_PRICE = process.env.PRICE_SIGNAL || "$0.01";
@@ -130,25 +131,26 @@ async function gatherInputs(symbol: string): Promise<SignalInputs> {
     };
   }
 
-  // Crypto path. Coinbase gives the freshest spot; CoinGecko gives 24h context.
+  // Crypto path. Fetch spot (Coinbase, required) and 24h context (CoinGecko,
+  // best-effort) in PARALLEL instead of one-then-the-other.
   const base = sym.includes("-") ? sym.split("-")[0] : sym;
-  const spot = await cryptoPrice(sym);
+  const [spot, markets] = await Promise.all([
+    cryptoPrice(sym),
+    topMarkets(50).catch(() => null), // context is optional; a spot price alone still signals
+  ]);
 
   let change24h: number | undefined;
-  let low24h: number | undefined;
-  let high24h: number | undefined;
-  try {
-    const markets = await topMarkets(50);
-    const match = (markets.coins as any[]).find(
-      (c) => String(c.symbol).toUpperCase() === base || String(c.id).toUpperCase() === base,
-    );
-    if (match) {
-      change24h = typeof match.change_24h_pct === "number" ? match.change_24h_pct : undefined;
-      // CoinGecko markets(per_page=50) doesn't include intraday high/low in this
-      // slice, so range stays undefined and momentum leans on the 24h change.
-    }
-  } catch {
-    // CoinGecko is best-effort context; a spot price alone still yields a signal.
+  const low24h: number | undefined = undefined;
+  const high24h: number | undefined = undefined;
+  const match = markets
+    ? (markets.coins as any[]).find(
+        (c) => String(c.symbol).toUpperCase() === base || String(c.id).toUpperCase() === base,
+      )
+    : undefined;
+  if (match && typeof match.change_24h_pct === "number") {
+    change24h = match.change_24h_pct;
+    // CoinGecko markets(per_page=50) omits intraday high/low here, so range stays
+    // undefined and momentum leans on the 24h change.
   }
 
   return {
@@ -187,6 +189,7 @@ premiumRouter.get("/signal", async (req: Request, res: Response) => {
     const safe = (n: number | undefined): number | null =>
       typeof n === "number" && Number.isFinite(n) ? n : null;
 
+    recordSale("GET /signal", priceToUsd(PREMIUM_PRICE), inputs.base);
     return res.json({
       symbol: inputs.base,
       price_usd: safe(inputs.price_usd),
