@@ -159,6 +159,59 @@ const ENDPOINTS: Endpoint[] = [
   },
 ];
 
+/** priceStr "$0.01" -> decimal string "0.01" (OpenAPI x-payment-info uses decimal USD; the
+ *  runtime 402's accepts[].amount stays atomic units elsewhere — different formats by design). */
+function decimalPrice(priceStr: string): string {
+  return priceStr.replace(/^\$/, "");
+}
+
+/** Build the OpenAPI 3.1 discovery document x402scan requires at GET /openapi.json. */
+function buildOpenApi(base: string) {
+  const paths: Record<string, any> = {};
+  for (const e of ENDPOINTS) {
+    const parameters = Object.entries(e.input).map(([name, spec]) => ({
+      name,
+      in: "query",
+      required: !!spec.required,
+      schema: { type: spec.type, ...(spec.enum ? { enum: spec.enum } : {}), ...(spec.default ? { default: spec.default } : {}) },
+      ...(spec.example ? { example: spec.example } : {}),
+    }));
+    paths[e.path] = {
+      get: {
+        operationId: e.path.replace(/^\//, "").replace(/\//g, "_"),
+        summary: e.description.split(".")[0],
+        description: e.description,
+        parameters,
+        "x-payment-info": {
+          protocols: [{ scheme: "exact", network: NETWORK, asset: "USDC" }],
+          price: { mode: "fixed", currency: "USD", amount: decimalPrice(e.price) },
+        },
+        responses: {
+          "200": {
+            description: "Paid response",
+            content: { "application/json": { schema: { type: "object" }, example: e.output_example } },
+          },
+          "402": { description: "Payment required (x402)" },
+        },
+      },
+    };
+  }
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: NAME,
+      version: "0.3.0",
+      description: DESCRIPTION,
+      "x-guidance":
+        "Keyless x402 API. GET any path with no payment for the 402 challenge, pay the quoted USDC amount " +
+        `on ${IS_MAINNET ? "Base mainnet" : "Base Sepolia"}, retry with X-PAYMENT. Prefer /vet and /brief for ` +
+        "decision-ready single-call answers over composing the raw feeds yourself. See /llms.txt for a plain-text guide.",
+    },
+    servers: [{ url: base }],
+    paths,
+  };
+}
+
 function baseUrl(req: Request): string {
   // Pin to PUBLIC_BASE_URL when set (recommended once you have a stable domain) so
   // a spoofed Host header can't rewrite the advertised resource URLs. Falls back to
@@ -222,6 +275,12 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
 
 // llms.txt — the AI-readable docs convention. LLM crawlers and agents fetch this
 // first; it is the sales pitch and the integration manual in one plain-text file.
+// OpenAPI discovery doc — the canonical contract x402scan (and other directory
+// crawlers) fetch at GET /openapi.json to validate and list this service.
+discoveryRouter.get("/openapi.json", (req: Request, res: Response) => {
+  res.json(buildOpenApi(baseUrl(req)));
+});
+
 discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {
   const base = baseUrl(req);
   const lines = [

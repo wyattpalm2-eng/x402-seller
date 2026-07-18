@@ -41,7 +41,10 @@ export function validateSafety(q: Record<string, any>): string | null {
   if (!Object.prototype.hasOwnProperty.call(GOPLUS_CHAINS, chain)) {
     return `unsupported chain "${chain.slice(0, 24)}". supported: ${SAFETY_CHAINS.join(", ")}`;
   }
-  if (!EVM_ADDR.test(String(q.address ?? ""))) return "provide a valid EVM token ?address=0x…";
+  // Missing address: let it reach the paywall (a discovery probe with no query
+  // params must still see 402, not 400 — the handler 404s gracefully post-pay).
+  // PROVIDED-but-malformed address: reject before charging, that's real abuse.
+  if (q.address !== undefined && !EVM_ADDR.test(String(q.address))) return "invalid EVM token address";
   return null;
 }
 
@@ -52,6 +55,7 @@ const pct = (v: unknown): number | null => {
 };
 
 export async function safetyReport(chainKey: string, address: string) {
+  if (!EVM_ADDR.test(address)) return null; // missing/empty address (e.g. a bare discovery probe) -> clean 404
   const chainId = GOPLUS_CHAINS[chainKey]; // validated upstream
   const addr = address.toLowerCase();
   const j = await cached(`gp:${chainId}:${addr}`, () =>
