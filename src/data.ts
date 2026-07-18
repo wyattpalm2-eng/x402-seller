@@ -8,6 +8,8 @@
  */
 
 const TIMEOUT_MS = 8000;
+const MAX_CACHE_ENTRIES = 1000;      // bound memory: FIFO-evict oldest beyond this
+const MAX_RESPONSE_BYTES = 30_000_000; // reject absurd upstream bodies (defense-in-depth)
 
 // Stale-while-revalidate cache. A paying buyer must never block on a cold/slow
 // upstream or eat a 502 when we hold any recent value:
@@ -28,6 +30,10 @@ function _refresh<T>(key: string, fn: () => Promise<T>): Promise<T> {
     try {
       const val = await fn();
       _cache.set(key, { at: Date.now(), val });
+      if (_cache.size > MAX_CACHE_ENTRIES) {
+        const oldest = _cache.keys().next().value; // FIFO evict to bound memory
+        if (oldest !== undefined) _cache.delete(oldest);
+      }
       return val;
     } finally {
       _inflight.delete(key);
@@ -37,7 +43,7 @@ function _refresh<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return p;
 }
 
-async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
+export async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const hit = _cache.get(key);
   const age = hit ? Date.now() - hit.at : Infinity;
   if (hit && age < FRESH_MS) return hit.val;            // fresh
@@ -48,18 +54,24 @@ async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return _refresh(key, fn);                             // cold/expired: must await
 }
 
-async function getJson(url: string): Promise<any> {
+/**
+ * Fetch JSON with a hard timeout. Exported so other modules share one policy.
+ * Throws a detailed error for SERVER logs; callers must not echo it to clients.
+ */
+export async function getJson(url: string, extraHeaders?: Record<string, string>): Promise<any> {
   const res = await fetch(url, {
     signal: AbortSignal.timeout(TIMEOUT_MS),
-    headers: { "user-agent": "x402-seller/0.1 (+market-data)" },
+    headers: { "user-agent": "x402-seller/0.1 (+market-data)", accept: "application/json", ...extraHeaders },
   });
   if (!res.ok) throw new Error(`upstream ${res.status} for ${url}`);
+  const len = Number(res.headers.get("content-length"));
+  if (Number.isFinite(len) && len > MAX_RESPONSE_BYTES) throw new Error(`upstream body too large: ${len}`);
   return res.json();
 }
 
 /** Spot crypto price from Coinbase's public API. symbol like "BTC" or "ETH-USD". */
 export async function cryptoPrice(symbol: string): Promise<any> {
-  const s = symbol.toUpperCase().replace(/[^A-Z0-9-]/g, ""); // sanitize: no path/host injection
+  const s = symbol.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 12); // sanitize + length cap
   if (!s) throw new Error("empty symbol");
   const pair = s.includes("-") ? s : `${s}-USD`;
   return cached(`price:${pair}`, async () => {
@@ -77,7 +89,7 @@ export async function cryptoPrice(symbol: string): Promise<any> {
 
 /** Stock/ETF quote from Yahoo Finance (free JSON, keyless). ticker like "AAPL". */
 export async function stockQuote(ticker: string): Promise<any> {
-  const t = ticker.toUpperCase().replace(/[^A-Z0-9.\-]/g, "");
+  const t = ticker.toUpperCase().replace(/[^A-Z0-9.\-]/g, "").slice(0, 12);
   if (!t) throw new Error("empty ticker");
   return cached(`stock:${t}`, async () => {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=1d`;

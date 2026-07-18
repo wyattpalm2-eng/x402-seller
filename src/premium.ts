@@ -205,7 +205,8 @@ premiumRouter.get("/signal", async (req: Request, res: Response) => {
       as_of: new Date().toISOString(),
     });
   } catch (err: any) {
-    return res.status(502).json({ error: "upstream_unavailable", detail: err?.message ?? String(err) });
+    console.error(`[signal] error:`, err?.message ?? err); // detail stays server-side
+    return res.status(502).json({ error: "upstream_unavailable" });
   }
 });
 

@@ -15,6 +15,8 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { getReceiveAddress } from "./wallet.js";
 import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
 import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
+import { cryptoRouter, cryptoRoutes, cryptoCatalog, validateOnchain } from "./crypto.js";
+import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -57,6 +59,7 @@ const CATALOG = [
   { route: "GET /stock",   price: PRICES.stock,   params: "?ticker=AAPL",  desc: "Stock/ETF quote (Yahoo Finance)" },
   { route: "GET /markets", price: PRICES.markets, params: "?limit=10",     desc: "Top crypto market snapshot (CoinGecko)" },
   ...premiumCatalog,
+  ...cryptoCatalog,
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
@@ -76,11 +79,23 @@ const routes = {
   "GET /stock": accept(PRICES.stock, "Stock/ETF quote"),
   "GET /markets": accept(PRICES.markets, "Top crypto market snapshot"),
   ...premiumRoutes,
+  ...cryptoRoutes,
 };
 
 // ─── App ─────────────────────────────────────────────────────────────────
 const app = express();
 app.disable("x-powered-by");
+// Trust exactly ONE proxy hop (the tunnel/PaaS in front) so req.ip is the real
+// client. NOT `true` — that would let a client spoof X-Forwarded-For to dodge the
+// rate limiter. Override via TRUST_PROXY if your platform chains more proxies.
+app.set("trust proxy", Number(process.env.TRUST_PROXY ?? 1));
+
+// Minimal security headers (JSON API — light touch, no external deps).
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 
 // Minimal per-IP rate limiter (60 req/min) for the FREE storefront only, so
 // nobody can hammer it. Plain Map, fixed 60s window, no deps. Paid routes are
@@ -88,9 +103,16 @@ app.disable("x-powered-by");
 const FREE_LIMIT = 60;
 const FREE_WINDOW_MS = 60_000;
 const _hits = new Map<string, { count: number; reset: number }>();
+let _lastSweep = Date.now();
+function sweepHits(now: number) {
+  if (now - _lastSweep < FREE_WINDOW_MS) return; // sweep at most once per window
+  _lastSweep = now;
+  for (const [k, v] of _hits) if (now > v.reset) _hits.delete(k); // drop expired: bound memory
+}
 function freeRateLimit(req: Request, res: Response, next: () => void) {
   const ip = req.ip || req.socket.remoteAddress || "unknown";
   const now = Date.now();
+  sweepHits(now);
   let h = _hits.get(ip);
   if (!h || now > h.reset) {
     h = { count: 0, reset: now + FREE_WINDOW_MS };
@@ -112,11 +134,25 @@ app.get("/catalog", freeRateLimit, (_req, res) =>
 app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
 app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
 
-// The paywall. Only the routes above in `routes` are charged.
+// Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
+app.use(discoveryRouter);
+
+// Pre-paywall validation: reject malformed /onchain requests with 400 BEFORE the
+// paywall charges, so a bot never pays for a request that can't succeed.
+app.use((req, res, next) => {
+  if (req.path.startsWith("/onchain/")) {
+    const err = validateOnchain(req.path, req.query as Record<string, any>);
+    if (err) return void res.status(400).json({ error: "bad_request", detail: err });
+  }
+  next();
+});
+
+// The paywall. Only the routes listed in `routes` are charged.
 app.use(paymentMiddleware(routes, resourceServer));
 
-// Premium paid handler(s). Only run AFTER payment has settled (paywall above).
+// Paid handlers. Only run AFTER payment has settled (paywall above).
 app.use(premiumRouter);
+app.use(cryptoRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
 app.get("/price", (req, res) => {
@@ -146,7 +182,8 @@ async function deliver(
   } catch (err: any) {
     // Payment settled but the upstream failed. The SWR cache serves last-good for
     // 5 min, so this only fires on a truly cold+dead upstream. Not counted as a sale.
-    res.status(502).json({ error: "upstream_unavailable", detail: err?.message ?? String(err) });
+    console.error(`[deliver] ${route} error:`, err?.message ?? err); // detail stays server-side
+    res.status(502).json({ error: "upstream_unavailable" });
   }
 }
 

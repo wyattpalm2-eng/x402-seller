@@ -12,16 +12,35 @@ Going live is a one-line network change.
 
 ## What it does
 
+**Market data**
+
 | Route | Price | Returns | Source |
 |---|---|---|---|
 | `GET /price?symbol=BTC` | $0.001 | spot crypto price | Coinbase (free) |
 | `GET /stock?ticker=AAPL` | $0.002 | stock/ETF quote | Yahoo Finance (free) |
 | `GET /markets?limit=10` | $0.005 | top crypto snapshot | CoinGecko (free) |
-| `GET /` `GET /health` `GET /catalog` `GET /stats` | free | storefront / status / catalog / live revenue + usage | — |
+| `GET /signal?symbol=BTC` | $0.01 | composite momentum verdict | blended |
+
+**On-chain / DeFi suite (the moat)** — data agents can't trivially assemble themselves:
+
+| Route | Price | Returns | Source |
+|---|---|---|---|
+| `GET /onchain/token?query=PEPE` | $0.005 | token price, liquidity, volume, 24h change, FDV, best pool | DexScreener (free) |
+| `GET /onchain/trending?chain=base` | $0.005 | trending DEX pools | GeckoTerminal (free) |
+| `GET /onchain/new?chain=base` | $0.01 | newly launched pools (launch hunting) | GeckoTerminal (free) |
+| `GET /onchain/defi?chain=base` | $0.005 | chain TVL + top protocols | DeFiLlama (free) |
+
+Chains: `base, eth, solana, bsc, polygon, arbitrum, optimism`. Token lookups accept
+`?query=` (symbol/name) or `?chain=&address=` (contract).
+
+**Free routes:** `GET /` `GET /health` `GET /catalog` `GET /stats` (live revenue/usage),
+plus bot-discovery manifests `GET /.well-known/x402.json` and `GET /.well-known/agent.json`.
 
 Hit a paid route with no payment and you get `HTTP 402` + instructions telling the
 caller exactly how much USDC to pay, in what token, to which address. An
 x402-capable client pays automatically and retries. The USDC lands in your wallet.
+Malformed on-chain requests get a `400` **before** the paywall, so a bot never pays
+for a doomed call.
 
 ---
 
