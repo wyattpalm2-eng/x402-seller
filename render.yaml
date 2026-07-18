@@ -15,11 +15,9 @@ services:
       - key: PAY_TO
         value: "0x72B944dA66263bE35c2a2eDFeF5c525d58fa53Df"
       - key: NETWORK
-        value: "eip155:84532"          # testnet (known-good). Mainnet blocked: thirdweb free tier
-                                        # does not support Base mainnet x402 "exact" settlement.
+        value: "eip155:8453"           # Base MAINNET — real USDC
       - key: FACILITATOR_URL
-        value: "https://x402.org/facilitator"
-      # Mainnet needs a facilitator that settles Base mainnet on a free plan.
-      # thirdweb server wallet (public), kept for when a working mainnet facilitator is wired:
-      # THIRDWEB_SERVER_WALLET=0x3459B5703678c1D9E25f0c1E2b9d65d6bAF38369
-      # THIRDWEB_SECRET_KEY lives in the Render dashboard (encrypted).
+        value: "https://facilitator.payai.network"   # keyless, free 10k settlements/mo, settles Base mainnet
+        # verified locally 2026-07-18: mainnet 402 generates with real USDC asset 0x8335…2913.
+        # Keyless fallbacks if PayAI has an outage: https://facilitator.xpay.sh , https://facilitator.0xarchive.io
+        # (thirdweb needs $99/mo for mainnet; CDP needs keys — neither required.)
