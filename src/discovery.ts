@@ -30,6 +30,8 @@ const P = {
   trending: process.env.PRICE_ONCHAIN_TRENDING || "$0.005",
   newp: process.env.PRICE_ONCHAIN_NEW || "$0.01",
   defi: process.env.PRICE_ONCHAIN_DEFI || "$0.005",
+  safety: process.env.PRICE_ONCHAIN_SAFETY || "$0.01",
+  derivs: process.env.PRICE_DERIVS || "$0.01",
 };
 
 interface Endpoint {
@@ -97,6 +99,28 @@ const ENDPOINTS: Endpoint[] = [
     description: "Chain TVL and top DeFi protocols by TVL on that chain.",
     input: { chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "solana", "bsc", "polygon", "arbitrum", "optimism"] } },
     output_example: { chain: "base", tvl_usd: 4527177464, top_protocols: [{ name: "Aave V3", category: "Lending", tvl_on_chain_usd: 900000000 }], source: "defillama" },
+  },
+  {
+    method: "GET", path: "/onchain/safety", price: P.safety,
+    description: "Token rug/honeypot safety report: contract red flags (honeypot, taxes, hidden mint, LP lock), 0-100 risk score, ok/warning/danger verdict. EVM chains only.",
+    input: {
+      address: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
+    },
+    output_example: {
+      chain: "eth", token: { symbol: "PEPE" }, verdict: "ok", risk_score: 0,
+      red_flags: [], details: { honeypot: false, sell_tax_pct: 0, lp_locked: true, holder_count: 571757 },
+    },
+  },
+  {
+    method: "GET", path: "/derivs", price: P.derivs,
+    description: "Perp derivatives intel: live funding rate (hourly + annualized), open interest, 24h move, and a crowded-long/short positioning signal.",
+    input: { symbol: { type: "string", required: false, default: "BTC", example: "ETH" } },
+    output_example: {
+      symbol: "BTC", mark_price: 63943, change_24h_pct: 0.4,
+      funding: { hourly_rate: 0.0000125, annualized_pct: 10.95 },
+      open_interest: { contracts: 39322, usd: 2514265000 }, signal: "neutral",
+    },
   },
 ];
 

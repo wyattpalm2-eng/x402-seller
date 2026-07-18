@@ -29,6 +29,8 @@ Going live is a one-line network change.
 | `GET /onchain/trending?chain=base` | $0.005 | trending DEX pools | GeckoTerminal (free) |
 | `GET /onchain/new?chain=base` | $0.01 | newly launched pools (launch hunting) | GeckoTerminal (free) |
 | `GET /onchain/defi?chain=base` | $0.005 | chain TVL + top protocols | DeFiLlama (free) |
+| `GET /onchain/safety?chain=base&address=0x…` | $0.01 | rug/honeypot report: red flags, risk score, verdict | GoPlus (free) |
+| `GET /derivs?symbol=BTC` | $0.01 | perp funding + open interest + crowded-positioning signal | Hyperliquid (free) |
 
 Chains: `base, eth, solana, bsc, polygon, arbitrum, optimism`. Token lookups accept
 `?query=` (symbol/name) or `?chain=&address=` (contract).

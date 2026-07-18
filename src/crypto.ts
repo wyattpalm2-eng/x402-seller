@@ -175,7 +175,7 @@ async function defiSnapshot(chainKey: string) {
 // ─── Router ─────────────────────────────────────────────────────────────────
 export const cryptoRouter: Router = Router();
 
-async function serve(
+export async function serve(
   res: Response,
   route: string,
   priceUsd: number,

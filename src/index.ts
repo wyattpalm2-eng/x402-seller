@@ -18,6 +18,8 @@ import { getReceiveAddress } from "./wallet.js";
 import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
 import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
 import { cryptoRouter, cryptoRoutes, cryptoCatalog, validateOnchain } from "./crypto.js";
+import { safetyRouter, safetyRoutes, safetyCatalog, validateSafety } from "./safety.js";
+import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./derivs.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 
@@ -71,6 +73,8 @@ const CATALOG = [
   { route: "GET /markets", price: PRICES.markets, params: "?limit=10",     desc: "Top crypto market snapshot" },
   ...premiumCatalog,
   ...cryptoCatalog,
+  ...safetyCatalog,
+  ...derivsCatalog,
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
@@ -102,6 +106,8 @@ const routes = {
   "GET /markets": accept(PRICES.markets, "Top crypto market snapshot"),
   ...premiumRoutes,
   ...cryptoRoutes,
+  ...safetyRoutes,
+  ...derivsRoutes,
 };
 
 // ─── App ─────────────────────────────────────────────────────────────────
@@ -159,13 +165,16 @@ app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()))
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
 app.use(discoveryRouter);
 
-// Pre-paywall validation: reject malformed /onchain requests with 400 BEFORE the
+// Pre-paywall validation: reject malformed paid requests with 400 BEFORE the
 // paywall charges, so a bot never pays for a request that can't succeed.
+// Order matters: /onchain/safety has its own (EVM-only) rules, checked first.
 app.use((req, res, next) => {
-  if (req.path.startsWith("/onchain/")) {
-    const err = validateOnchain(req.path, req.query as Record<string, any>);
-    if (err) return void res.status(400).json({ error: "bad_request", detail: err });
-  }
+  const q = req.query as Record<string, any>;
+  let err: string | null = null;
+  if (req.path === "/onchain/safety") err = validateSafety(q);
+  else if (req.path.startsWith("/onchain/")) err = validateOnchain(req.path, q);
+  else if (req.path === "/derivs") err = validateDerivs(q);
+  if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
 });
 
@@ -174,7 +183,9 @@ app.use(paymentMiddleware(routes, resourceServer));
 
 // Paid handlers. Only run AFTER payment has settled (paywall above).
 app.use(premiumRouter);
+app.use(safetyRouter); // before cryptoRouter so /onchain/safety wins over any generic /onchain match
 app.use(cryptoRouter);
+app.use(derivsRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
 app.get("/price", (req, res) => {
