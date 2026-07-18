@@ -42,6 +42,7 @@ const P = {
   derivs: process.env.PRICE_DERIVS || "$0.01",
   vet: process.env.PRICE_VET || "$0.02",
   brief: process.env.PRICE_BRIEF || "$0.02",
+  screen: process.env.PRICE_SCREEN || "$0.03",
 };
 
 interface Endpoint {
@@ -156,6 +157,15 @@ const ENDPOINTS: Endpoint[] = [
       price_usd: 63950, derivatives: { funding_annualized_pct: 10.95, positioning: "neutral" },
       sentiment: { value: 25, label: "Extreme Fear" },
     },
+  },
+  {
+    method: "GET", path: "/screen", price: P.screen,
+    description: "ANSWER: batch rug/safety screen. Give a chain and up to 8 token addresses; get each token's verdict + risk score sorted safest-first, plus a clear/caution/avoid summary. Screen a watchlist or the newest launches in one call.",
+    input: {
+      addresses: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933,0x4200000000000000000000000000000000000006" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
+    },
+    output_example: { chain: "base", summary: { screened: 2, clear: 1, caution: 1, avoid: 0 }, tokens: [{ symbol: "WETH", verdict: "ok", risk_score: 0 }] },
   },
 ];
 

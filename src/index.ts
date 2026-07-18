@@ -18,6 +18,7 @@ import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
 import { cryptoRouter, cryptoRoutes, cryptoCatalog, validateOnchain } from "./crypto.js";
 import { safetyRouter, safetyRoutes, safetyCatalog, validateSafety } from "./safety.js";
 import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./derivs.js";
+import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./screen.js";
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief } from "./composites.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
@@ -67,6 +68,7 @@ const CATALOG = [
   ...cryptoCatalog,
   ...safetyCatalog,
   ...derivsCatalog,
+  ...screenCatalog,
   ...compositesCatalog,
 ];
 
@@ -93,6 +95,7 @@ const routes = {
   ...cryptoRoutes,
   ...safetyRoutes,
   ...derivsRoutes,
+  ...screenRoutes,
   ...compositesRoutes,
 };
 
@@ -160,6 +163,7 @@ app.use((req, res, next) => {
   if (req.path === "/onchain/safety") err = validateSafety(q);
   else if (req.path.startsWith("/onchain/")) err = validateOnchain(req.path, q);
   else if (req.path === "/derivs") err = validateDerivs(q);
+  else if (req.path === "/screen") err = validateScreen(q);
   else if (req.path === "/vet") err = validateVet(q);
   else if (req.path === "/brief") err = validateBrief(q);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
@@ -178,6 +182,7 @@ app.use(premiumRouter);
 app.use(safetyRouter); // before cryptoRouter so /onchain/safety wins over any generic /onchain match
 app.use(cryptoRouter);
 app.use(derivsRouter);
+app.use(screenRouter);
 app.use(compositesRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
