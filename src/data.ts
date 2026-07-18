@@ -120,6 +120,19 @@ export async function stockQuote(ticker: string): Promise<any> {
   });
 }
 
+/** Crypto Fear & Greed index (free, keyless). 0=extreme fear, 100=extreme greed. */
+export async function fearGreed(): Promise<{ value: number | null; label: string | null }> {
+  return cached("fng", async () => {
+    const j = await getJson("https://api.alternative.me/fng/");
+    const d = j?.data?.[0];
+    const v = Number(d?.value);
+    return {
+      value: Number.isFinite(v) ? v : null,
+      label: d?.value_classification ?? null,
+    };
+  });
+}
+
 /** Top crypto market snapshot from CoinGecko's free API. */
 export async function topMarkets(limit = 10): Promise<any> {
   const n = Math.min(Math.max(limit, 1), 50);

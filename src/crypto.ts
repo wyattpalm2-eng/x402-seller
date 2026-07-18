@@ -120,7 +120,7 @@ function normalizeGtPool(d: any) {
 }
 
 // ─── Data assembly ──────────────────────────────────────────────────────────
-async function tokenSnapshot(address?: string, query?: string, chainKey?: string) {
+export async function tokenSnapshot(address?: string, query?: string, chainKey?: string) {
   const ci = chainKey ? chainInfo(chainKey) : null;
   let pairs: any[] = [];
   if (address) {

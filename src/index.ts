@@ -20,6 +20,7 @@ import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
 import { cryptoRouter, cryptoRoutes, cryptoCatalog, validateOnchain } from "./crypto.js";
 import { safetyRouter, safetyRoutes, safetyCatalog, validateSafety } from "./safety.js";
 import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./derivs.js";
+import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief } from "./composites.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 
@@ -75,6 +76,7 @@ const CATALOG = [
   ...cryptoCatalog,
   ...safetyCatalog,
   ...derivsCatalog,
+  ...compositesCatalog,
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
@@ -108,6 +110,7 @@ const routes = {
   ...cryptoRoutes,
   ...safetyRoutes,
   ...derivsRoutes,
+  ...compositesRoutes,
 };
 
 // ─── App ─────────────────────────────────────────────────────────────────
@@ -174,6 +177,8 @@ app.use((req, res, next) => {
   if (req.path === "/onchain/safety") err = validateSafety(q);
   else if (req.path.startsWith("/onchain/")) err = validateOnchain(req.path, q);
   else if (req.path === "/derivs") err = validateDerivs(q);
+  else if (req.path === "/vet") err = validateVet(q);
+  else if (req.path === "/brief") err = validateBrief(q);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
 });
@@ -186,6 +191,7 @@ app.use(premiumRouter);
 app.use(safetyRouter); // before cryptoRouter so /onchain/safety wins over any generic /onchain match
 app.use(cryptoRouter);
 app.use(derivsRouter);
+app.use(compositesRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
 app.get("/price", (req, res) => {
@@ -250,7 +256,9 @@ function landingPage(): string {
   .k{color:#666} .pay{word-break:break-all}
 </style>
 <h1>x402-seller</h1>
-<p class="sub">Market data, priced per request, paid in USDC by AI agents via the x402 protocol.</p>
+<p class="sub">Decision-ready market intelligence for autonomous agents. No signup, no API key —
+you can't fill a form, but you can pay a cent. Verdict-first JSON, one call per decision.
+Agents: fetch <code>/llms.txt</code> or <code>/.well-known/x402.json</code> and go.</p>
 <table><tr><th>Endpoint</th><th>Price</th><th>Returns</th></tr>${rows}</table>
 <p><span class="k">Network:</span> ${NET_LABEL}<br>
 <span class="k">Pay to:</span> <span class="pay">${PAY_TO}</span><br>

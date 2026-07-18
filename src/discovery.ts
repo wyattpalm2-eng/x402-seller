@@ -17,9 +17,17 @@ const FACILITATOR = process.env.FACILITATOR_URL?.trim() || "https://x402.org/fac
 const IS_MAINNET = NETWORK === "eip155:8453";
 const NAME = "x402-seller";
 const DESCRIPTION =
-  "Per-request market + on-chain data for AI agents, paid in USDC on Base via x402. " +
-  "Crypto spot prices, stock quotes, market snapshots, a composite trade signal, and " +
-  "an on-chain suite (token intelligence, trending + newly-launched DEX pools, DeFi TVL).";
+  "Decision-ready market + on-chain intelligence for autonomous agents. Keyless by design: " +
+  "no signup, no API key, no rate-limit account — pay a cent per request in USDC (x402) and get " +
+  "verdict-first JSON built to be cheap to reason over. ANSWER endpoints (/vet token due diligence, " +
+  "/brief market regime) replace 2-3 raw API calls + signup walls + parsing tokens with one call. " +
+  "Plus raw feeds: prices, stocks, DEX pools, new launches, rug checks, perp funding/OI.";
+const WHY_PAY = [
+  "keyless: an agent cannot fill signup forms or manage API keys — x402 payment IS the auth",
+  "one call per decision: /vet and /brief merge multiple sources into a verdict, saving the caller's inference tokens",
+  "verdict-first JSON: read field 1, act; reasons included for audit",
+  "always-warm cache: no 429s, no free-tier throttling, stale-while-revalidate under the hood",
+];
 
 const P = {
   price: process.env.PRICE_CRYPTO || "$0.001",
@@ -32,6 +40,8 @@ const P = {
   defi: process.env.PRICE_ONCHAIN_DEFI || "$0.005",
   safety: process.env.PRICE_ONCHAIN_SAFETY || "$0.01",
   derivs: process.env.PRICE_DERIVS || "$0.01",
+  vet: process.env.PRICE_VET || "$0.02",
+  brief: process.env.PRICE_BRIEF || "$0.02",
 };
 
 interface Endpoint {
@@ -122,6 +132,31 @@ const ENDPOINTS: Endpoint[] = [
       open_interest: { contracts: 39322, usd: 2514265000 }, signal: "neutral",
     },
   },
+  {
+    method: "GET", path: "/vet", price: P.vet,
+    description: "ANSWER: one-call token due diligence. Merges DEX market structure + contract security into a verdict your agent can act on directly: clear / caution / avoid, with reasons. Replaces 2-3 raw lookups and the tokens to reconcile them.",
+    input: {
+      address: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
+    },
+    output_example: {
+      verdict: "caution", confidence: "high",
+      why: ["security: blacklist function present", "market: thin liquidity ($8,400)"],
+      token: { symbol: "PEPE" }, market: { price_usd: 0.0000271, liquidity_usd: 8400 },
+      security: { risk_score: 25, red_flags: ["blacklist function present"] },
+    },
+  },
+  {
+    method: "GET", path: "/brief", price: P.brief,
+    description: "ANSWER: one-call market regime read for a symbol. Spot + 24h move + perp funding/OI + market sentiment distilled to risk_on / risk_off / neutral with reasons. One call arms a trading agent's context window.",
+    input: { symbol: { type: "string", required: false, default: "BTC", example: "ETH" } },
+    output_example: {
+      regime: "neutral", symbol: "BTC",
+      why: ["24h move +0.4%", "funding 10.95% annualized — balanced", "sentiment 25/100 (Extreme Fear)"],
+      price_usd: 63950, derivatives: { funding_annualized_pct: 10.95, positioning: "neutral" },
+      sentiment: { value: 25, label: "Extreme Fear" },
+    },
+  },
 ];
 
 function baseUrl(req: Request): string {
@@ -143,6 +178,7 @@ discoveryRouter.get("/.well-known/x402.json", (req: Request, res: Response) => {
     x402Version: 2,
     name: NAME,
     description: DESCRIPTION,
+    why_pay: WHY_PAY,
     network: NETWORK,
     asset: "USDC",
     payTo: getReceiveAddress(),
@@ -164,7 +200,8 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
   res.json({
     name: NAME,
     description: DESCRIPTION,
-    version: "0.2.0",
+    why_pay: WHY_PAY,
+    version: "0.3.0",
     url: base,
     protocols: ["x402"],
     provider: { wallet: getReceiveAddress(), network: NETWORK, mainnet: IS_MAINNET },
@@ -178,7 +215,37 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
       input: e.input,
       output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
     })),
-    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats` },
+    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats`, llms: `${base}/llms.txt` },
     documentation: base,
   });
+});
+
+// llms.txt — the AI-readable docs convention. LLM crawlers and agents fetch this
+// first; it is the sales pitch and the integration manual in one plain-text file.
+discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {
+  const base = baseUrl(req);
+  const lines = [
+    `# ${NAME}`,
+    "",
+    `> ${DESCRIPTION}`,
+    "",
+    "## Why pay instead of using free APIs",
+    ...WHY_PAY.map((w) => `- ${w}`),
+    "",
+    "## How to pay (x402)",
+    "1. GET any paid endpoint with no payment -> HTTP 402 + PAYMENT-REQUIRED header (base64 JSON: amount, USDC contract, payTo, network).",
+    `2. Pay that amount in USDC on ${IS_MAINNET ? "Base mainnet" : "Base Sepolia testnet"} and retry with the X-PAYMENT header (any x402 client library does this automatically, e.g. @x402/fetch).`,
+    "3. Response is verdict-first JSON. No account, no API key, ever.",
+    "",
+    "## Endpoints",
+    ...ENDPOINTS.map((e) => `- ${e.method} ${base}${e.path} — ${e.price} — ${e.description}`),
+    "",
+    "## Machine-readable",
+    `- x402 manifest: ${base}/.well-known/x402.json`,
+    `- agent card:    ${base}/.well-known/agent.json`,
+    `- catalog:       ${base}/catalog`,
+    "",
+    `payTo: ${getReceiveAddress()}  network: ${NETWORK}  asset: USDC`,
+  ];
+  res.type("text/plain").send(lines.join("\n"));
 });
