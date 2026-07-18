@@ -15,6 +15,9 @@ services:
       - key: PAY_TO
         value: "0x72B944dA66263bE35c2a2eDFeF5c525d58fa53Df"
       - key: NETWORK
-        value: "eip155:84532"          # testnet. flip to eip155:8453 for real money
+        value: "eip155:8453"           # Base MAINNET (real USDC)
       - key: FACILITATOR_URL
-        value: "https://x402.org/facilitator"   # mainnet: https://api.cdp.coinbase.com/platform/v2/x402
+        value: "https://x402.org/facilitator"   # fallback only; thirdweb is used when secret+server wallet are set
+      - key: THIRDWEB_SERVER_WALLET
+        value: "0x3459B5703678c1D9E25f0c1E2b9d65d6bAF38369"   # public; gasless relay via thirdweb
+      # THIRDWEB_SECRET_KEY is set in the Render dashboard (encrypted), NOT here.
