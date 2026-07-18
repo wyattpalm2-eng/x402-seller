@@ -130,7 +130,7 @@ discoveryRouter.get("/.well-known/x402.json", (req: Request, res: Response) => {
       description: e.description,
       mimeType: "application/json",
       input: e.input,
-      output_example: e.output_example,
+      output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
     })),
   });
 });
@@ -152,7 +152,7 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
       price: e.price,
       description: e.description,
       input: e.input,
-      output_example: e.output_example,
+      output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
     })),
     discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats` },
     documentation: base,

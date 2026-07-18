@@ -186,7 +186,7 @@ async function serve(
     const data = await fn();
     if (data == null) return res.status(404).json({ error: "not_found", detail: "no data for that request" });
     recordSale(route, priceUsd, label);
-    res.json(data);
+    res.json({ ...data, source: "x402-seller" }); // don't reveal the upstream supply chain
   } catch (err: any) {
     console.error(`[onchain] ${route} error:`, err?.message ?? err); // detail stays server-side
     res.status(502).json({ error: "upstream_unavailable" });
@@ -234,8 +234,8 @@ export const cryptoRoutes = {
 };
 
 export const cryptoCatalog = [
-  { route: "GET /onchain/token", price: PRICE_TOKEN, params: "?query=PEPE  |  ?chain=base&address=0x…", desc: "Token snapshot: price/liquidity/volume/24h/FDV (DexScreener)" },
-  { route: "GET /onchain/trending", price: PRICE_TRENDING, params: "?chain=base", desc: "Trending DEX pools (GeckoTerminal)" },
-  { route: "GET /onchain/new", price: PRICE_NEW, params: "?chain=base", desc: "Newly launched pools — launch hunting (GeckoTerminal)" },
-  { route: "GET /onchain/defi", price: PRICE_DEFI, params: "?chain=base", desc: "Chain TVL + top protocols (DeFiLlama)" },
+  { route: "GET /onchain/token", price: PRICE_TOKEN, params: "?query=PEPE  |  ?chain=base&address=0x…", desc: "Token snapshot: price, liquidity, volume, 24h change, FDV, best pool" },
+  { route: "GET /onchain/trending", price: PRICE_TRENDING, params: "?chain=base", desc: "Trending DEX pools" },
+  { route: "GET /onchain/new", price: PRICE_NEW, params: "?chain=base", desc: "Newly launched pools — launch hunting" },
+  { route: "GET /onchain/defi", price: PRICE_DEFI, params: "?chain=base", desc: "Chain TVL + top protocols" },
 ];

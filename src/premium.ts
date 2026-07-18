@@ -201,7 +201,7 @@ premiumRouter.get("/signal", async (req: Request, res: Response) => {
         range_component: rangeComponent, // position in 24h range, or null
         weights: rangeComponent === null ? { change: 1 } : { change: 0.7, range: 0.3 },
       },
-      source: inputs.source,
+      source: "x402-seller",
       as_of: new Date().toISOString(),
     });
   } catch (err: any) {

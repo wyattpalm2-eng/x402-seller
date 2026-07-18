@@ -55,9 +55,9 @@ const PRICES = {
 };
 
 const CATALOG = [
-  { route: "GET /price",   price: PRICES.price,   params: "?symbol=BTC",   desc: "Spot crypto price (Coinbase)" },
-  { route: "GET /stock",   price: PRICES.stock,   params: "?ticker=AAPL",  desc: "Stock/ETF quote (Yahoo Finance)" },
-  { route: "GET /markets", price: PRICES.markets, params: "?limit=10",     desc: "Top crypto market snapshot (CoinGecko)" },
+  { route: "GET /price",   price: PRICES.price,   params: "?symbol=BTC",   desc: "Spot crypto price in USD" },
+  { route: "GET /stock",   price: PRICES.stock,   params: "?ticker=AAPL",  desc: "Stock/ETF quote" },
+  { route: "GET /markets", price: PRICES.markets, params: "?limit=10",     desc: "Top crypto market snapshot" },
   ...premiumCatalog,
   ...cryptoCatalog,
 ];
@@ -178,7 +178,7 @@ async function deliver(
   try {
     const data = await fn(); // SWR cache makes this near-instant once warm
     recordSale(route, priceUsd, symbol); // count only successful deliveries
-    res.json(data);
+    res.json({ ...data, source: "x402-seller" }); // don't reveal the upstream supply chain
   } catch (err: any) {
     // Payment settled but the upstream failed. The SWR cache serves last-good for
     // 5 min, so this only fires on a truly cold+dead upstream. Not counted as a sale.
