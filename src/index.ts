@@ -12,6 +12,8 @@ import express, { type Request, type Response } from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { createThirdwebClient } from "thirdweb";
+import { facilitator as createThirdwebFacilitator } from "thirdweb/x402";
 import { getReceiveAddress } from "./wallet.js";
 import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
 import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
@@ -25,23 +27,32 @@ const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${
 const FACILITATOR_URL = process.env.FACILITATOR_URL?.trim() || "https://x402.org/facilitator";
 const PAY_TO = getReceiveAddress();
 
+// thirdweb facilitator (mainnet, gasless). Active only when BOTH are set.
+const THIRDWEB_SECRET_KEY = process.env.THIRDWEB_SECRET_KEY?.trim();
+const THIRDWEB_SERVER_WALLET = process.env.THIRDWEB_SERVER_WALLET?.trim();
+const USE_THIRDWEB = !!(THIRDWEB_SECRET_KEY && THIRDWEB_SERVER_WALLET);
+
 const IS_MAINNET = NETWORK === "eip155:8453";
 const NET_LABEL = IS_MAINNET ? "Base mainnet (REAL money)" : "Base Sepolia (testnet)";
+const FACILITATOR_LABEL = USE_THIRDWEB ? "thirdweb (api.thirdweb.com/v1/payments/x402)" : FACILITATOR_URL;
 
 // ─── Go-live safety guards ────────────────────────────────────────────────
 // Refuse to run a config that would advertise real-money payments against the
 // testnet facilitator (or claim testnet while pointed at a mainnet facilitator).
 const FAC_IS_TESTNET = /x402\.org\/facilitator/.test(FACILITATOR_URL);
-if (IS_MAINNET && FAC_IS_TESTNET) {
+if (IS_MAINNET && !USE_THIRDWEB && FAC_IS_TESTNET) {
   console.error(
-    "\n  FATAL: NETWORK is Base mainnet but FACILITATOR_URL is the TESTNET facilitator.\n" +
-      "  Buyers would be told to pay real USDC against a testnet settler.\n" +
-      "  Set FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402 (+ CDP keys) first.\n",
+    "\n  FATAL: NETWORK is Base mainnet but no real-money facilitator is configured.\n" +
+      "  Set THIRDWEB_SECRET_KEY + THIRDWEB_SERVER_WALLET to settle real USDC via thirdweb.\n",
   );
   process.exit(1);
 }
-if (!IS_MAINNET && !FAC_IS_TESTNET) {
-  console.warn("  WARN: testnet network with a non-testnet facilitator — double-check FACILITATOR_URL.");
+if (USE_THIRDWEB && THIRDWEB_SERVER_WALLET && !/^0x[a-fA-F0-9]{40}$/.test(THIRDWEB_SERVER_WALLET)) {
+  console.error(`\n  FATAL: THIRDWEB_SERVER_WALLET is not a valid EVM address: ${THIRDWEB_SERVER_WALLET}\n`);
+  process.exit(1);
+}
+if (!IS_MAINNET && USE_THIRDWEB) {
+  console.warn("  WARN: thirdweb facilitator is set but NETWORK is testnet — set NETWORK=eip155:8453 to earn real USDC.");
 }
 if (!/^0x[a-fA-F0-9]{40}$/.test(PAY_TO)) {
   console.warn(`  WARN: PAY_TO does not look like a valid EVM address: ${PAY_TO}`);
@@ -63,7 +74,18 @@ const CATALOG = [
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
-const facilitator = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+// thirdweb runs a hosted facilitator; its {url, createAuthHeaders} slot straight
+// into @x402's HTTPFacilitatorClient. Settlement is gasless via thirdweb's server
+// wallet. No secret key = keyless testnet facilitator.
+function buildFacilitator(): HTTPFacilitatorClient {
+  if (USE_THIRDWEB) {
+    const twClient = createThirdwebClient({ secretKey: THIRDWEB_SECRET_KEY! });
+    const tw = createThirdwebFacilitator({ client: twClient, serverWalletAddress: THIRDWEB_SERVER_WALLET! });
+    return new HTTPFacilitatorClient({ url: tw.url, createAuthHeaders: tw.createAuthHeaders });
+  }
+  return new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+}
+const facilitator = buildFacilitator();
 const resourceServer = new x402ResourceServer(facilitator).register(NETWORK, new ExactEvmScheme());
 
 function accept(price: string, description: string) {
@@ -194,7 +216,7 @@ app.listen(PORT, () => {
   console.log("  └────────────────────────────────────────────────────────┘");
   console.log(`  Local:       http://localhost:${PORT}`);
   console.log(`  Network:     ${NET_LABEL}`);
-  console.log(`  Facilitator: ${FACILITATOR_URL}`);
+  console.log(`  Facilitator: ${FACILITATOR_LABEL}`);
   console.log(`  Paid to:     ${PAY_TO}`);
   console.log("");
   console.log("  Paid endpoints:");
