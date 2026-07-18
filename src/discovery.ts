@@ -268,7 +268,8 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
       input: e.input,
       output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
     })),
-    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats`, llms: `${base}/llms.txt` },
+    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats`, llms: `${base}/llms.txt`, openapi: `${base}/openapi.json` },
+    repository: "https://github.com/wyattpalm2-eng/x402-seller",
     documentation: base,
   });
 });
@@ -279,6 +280,16 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
 // crawlers) fetch at GET /openapi.json to validate and list this service.
 discoveryRouter.get("/openapi.json", (req: Request, res: Response) => {
   res.json(buildOpenApi(baseUrl(req)));
+});
+
+// favicon — x402scan flags its absence; makes the marketplace listing look real.
+// Tiny inline SVG "$" mark, no binary asset needed.
+discoveryRouter.get("/favicon.ico", (_req: Request, res: Response) => {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
+    `<rect width="32" height="32" rx="6" fill="#111"/>` +
+    `<text x="16" y="23" font-size="20" font-family="monospace" fill="#4ade80" text-anchor="middle">$</text></svg>`;
+  res.type("image/svg+xml").set("Cache-Control", "public, max-age=86400").send(svg);
 });
 
 discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {

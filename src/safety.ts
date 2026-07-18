@@ -91,6 +91,18 @@ export async function safetyReport(chainKey: string, address: string) {
   const risk = Math.min(100, checks.reduce((s, [, hit, w]) => s + (hit ? w : 0), 0));
   const verdict = risk >= 60 ? "danger" : risk >= 25 ? "warning" : "ok";
 
+  // Positive signals — so a "clear" verdict is trustworthy, not just an absence of flags.
+  const greenChecks: Array<[string, boolean]> = [
+    ["not a honeypot", !flag(t.is_honeypot)],
+    ["source code verified", flag(t.is_open_source)],
+    ["ownership renounced", String(t.owner_address ?? "") === "" || /^0x0+$/.test(String(t.owner_address ?? ""))],
+    ["cannot mint new supply", !flag(t.is_mintable)],
+    ["0% buy & sell tax", (buyTax ?? 0) === 0 && (sellTax ?? 0) === 0],
+    ["liquidity locked", lpLocked === true],
+    ["10k+ holders", (Number(t.holder_count) || 0) >= 10000],
+  ];
+  const greenFlags = greenChecks.filter(([, ok]) => ok).map(([label]) => label);
+
   return {
     chain: chainKey,
     address: addr,
@@ -98,6 +110,7 @@ export async function safetyReport(chainKey: string, address: string) {
     verdict,
     risk_score: risk, // 0-100, higher = worse
     red_flags: redFlags,
+    green_flags: greenFlags,
     details: {
       honeypot: flag(t.is_honeypot),
       buy_tax_pct: buyTax,
