@@ -22,6 +22,7 @@ import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./scr
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief } from "./composites.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
+import { recordView, markBuyer, funnel } from "./funnel.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -99,6 +100,10 @@ const routes = {
   ...compositesRoutes,
 };
 
+// Exact paths that are behind the paywall — used by the funnel to tell a paid
+// 200 (a real buy) apart from a free-route 200.
+const PAID_PATHS = new Set(Object.keys(routes).map((k) => k.split(" ")[1]));
+
 // ─── App ─────────────────────────────────────────────────────────────────
 const app = express();
 app.disable("x-powered-by");
@@ -111,6 +116,22 @@ app.set("trust proxy", Number(process.env.TRUST_PROXY ?? 1));
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// Demand funnel: after each response finishes, a 402 on any route = a paywall
+// challenge nobody paid (a window-shopper → recordView); a 200 on a PAID path =
+// a real buy (markBuyer, so that IP drops off the shopper list). Read-only,
+// never touches the response, so it can't affect a real request.
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    try {
+      if (res.statusCode === 402) recordView(req);
+      else if (res.statusCode === 200 && PAID_PATHS.has(req.path)) markBuyer(req);
+    } catch {
+      /* telemetry must never break a request */
+    }
+  });
   next();
 });
 
@@ -149,6 +170,14 @@ app.get("/catalog", freeRateLimit, (_req, res) =>
   res.json({ payTo: PAY_TO, network: NETWORK, facilitator: FACILITATOR_LABEL, endpoints: CATALOG }),
 );
 app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
+// Demand funnel: who looked (402) vs who bought. Optionally private: set
+// FUNNEL_KEY and pass ?key=… so visitor IPs aren't world-readable.
+app.get("/funnel", freeRateLimit, (req, res) => {
+  const key = process.env.FUNNEL_KEY?.trim();
+  if (key && String(req.query.key ?? "") !== key)
+    return void res.status(403).json({ error: "forbidden", detail: "pass ?key= to view the funnel" });
+  return void res.json(funnel(stats().totalPaidCalls));
+});
 app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
 
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json

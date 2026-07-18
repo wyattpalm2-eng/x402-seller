@@ -53,6 +53,41 @@ const pct = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) ? Number((n * 100).toFixed(2)) : null;
 };
+const numOrNull = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : null;
+};
+
+// Honeypot.is covers these EVM chains (keyed by GoPlus numeric id): ETH, BSC, Base.
+const HONEYPOT_CHAINS = new Set(["1", "56", "8453"]);
+
+/**
+ * Dynamic buy/sell simulation from honeypot.is (free, keyless). Unlike GoPlus
+ * (which reads bytecode), this EXECUTES a simulated buy and sell — a different
+ * method, so it catches sell-blocks the static scan misses. null if the chain
+ * isn't supported or the call fails (we then fall back to GoPlus-only).
+ */
+async function honeypotCheck(chainId: string, addr: string) {
+  if (!HONEYPOT_CHAINS.has(chainId)) return null;
+  const j = await cached(`hp:${chainId}:${addr}`, () =>
+    getJson(
+      `https://api.honeypot.is/v2/IsHoneypot?address=${encodeURIComponent(addr)}&chainID=${encodeURIComponent(chainId)}`,
+    ),
+  ).catch(() => null);
+  if (!j) return null;
+  const sim = j.simulationResult ?? {};
+  const hr = j.honeypotResult ?? {};
+  const sum = j.summary ?? {};
+  return {
+    is_honeypot: hr.isHoneypot === true,
+    sim_success: j.simulationSuccess !== false,
+    buy_tax_pct: numOrNull(sim.buyTax),
+    sell_tax_pct: numOrNull(sim.sellTax),
+    transfer_tax_pct: numOrNull(sim.transferTax),
+    risk_level: sum.riskLevel ?? sum.risk ?? null,
+    flags: Array.isArray(sum.flags) ? sum.flags.slice(0, 8) : [],
+  };
+}
 
 export async function safetyReport(chainKey: string, address: string) {
   if (!EVM_ADDR.test(address)) return null; // missing/empty address (e.g. a bare discovery probe) -> clean 404
@@ -70,8 +105,11 @@ export async function safetyReport(chainKey: string, address: string) {
   const lpLocked = Array.isArray(t.lp_holders) ? t.lp_holders.some((h: any) => String(h?.is_locked) === "1") : null;
   const buyTax = pct(t.buy_tax);
   const sellTax = pct(t.sell_tax);
+  const ownerRenounced =
+    String(t.owner_address ?? "") === "" || /^0x0+$/.test(String(t.owner_address ?? ""));
 
-  // Red flags, worst first. Each carries a weight toward the 0-100 risk score.
+  // ── Static analysis (GoPlus): bytecode/heuristic red flags, worst first. Each
+  // carries a weight toward the 0-100 risk score. ──
   const checks: Array<[string, boolean, number]> = [
     ["honeypot: holders cannot sell", flag(t.is_honeypot), 100],
     ["cannot sell all tokens", flag(t.cannot_sell_all), 60],
@@ -86,16 +124,53 @@ export async function safetyReport(chainKey: string, address: string) {
     [`sell tax over 10% (${sellTax ?? "?"}%)`, (sellTax ?? 0) > 10, 45],
     [`buy tax over 10% (${buyTax ?? "?"}%)`, (buyTax ?? 0) > 10, 30],
     ["LP not locked", lpLocked === false, 25],
+    ["creator has deployed other honeypots", flag(t.honeypot_with_same_creator), 40], // serial-rugger, keyless
   ];
   const redFlags = checks.filter(([, hit]) => hit).map(([label]) => label);
-  const risk = Math.min(100, checks.reduce((s, [, hit, w]) => s + (hit ? w : 0), 0));
-  const verdict = risk >= 60 ? "danger" : risk >= 25 ? "warning" : "ok";
+  let risk = Math.min(100, checks.reduce((s, [, hit, w]) => s + (hit ? w : 0), 0));
+  const gpRisk = risk; // snapshot the static-only score before dynamic penalties
+
+  // ── Dynamic analysis (Honeypot.is): actually simulates a buy+sell. A DIFFERENT
+  // method than the static scan (execution vs bytecode), so it catches sell-traps
+  // GoPlus misses and clears tokens it over-flags. ETH / BSC / Base only. ──
+  const sim = await honeypotCheck(chainId, addr);
+  const sources = ["goplus"];
+  let needsReview = false;
+  if (sim) {
+    sources.push("honeypot.is");
+    if (sim.is_honeypot) {
+      redFlags.unshift("honeypot.is SIMULATION: a live sell was blocked");
+      risk = 100;
+    }
+    if ((sim.sell_tax_pct ?? 0) > 10) {
+      redFlags.push(`simulated sell tax ${sim.sell_tax_pct}%`);
+      risk += 40;
+    } else if ((sim.sell_tax_pct ?? 0) > 5) {
+      risk += 15;
+    }
+    if (!sim.sim_success && !sim.is_honeypot) {
+      redFlags.push("could not simulate a trade (illiquid or blocked)");
+      risk += 20;
+    }
+    // Agreement factor: when the two methods DISAGREE, never read "safe" and drop
+    // confidence — disagreement is itself a warning worth surfacing.
+    const staticSaysClean = gpRisk < 25 && !flag(t.is_honeypot);
+    const dynamicSaysBad = sim.is_honeypot || (sim.sell_tax_pct ?? 0) > 10 || !sim.sim_success;
+    if (staticSaysClean && dynamicSaysBad) needsReview = true;
+    if (flag(t.is_honeypot) && sim.sim_success && !sim.is_honeypot) needsReview = true;
+  }
+
+  risk = Math.min(100, Math.round(risk));
+  let verdict = risk >= 60 ? "danger" : risk >= 25 ? "warning" : "ok";
+  if (needsReview && verdict === "ok") verdict = "warning"; // sources disagree → not "safe"
+  const confidence = !sim ? "medium" : needsReview ? "low" : "high";
 
   // Positive signals — so a "clear" verdict is trustworthy, not just an absence of flags.
   const greenChecks: Array<[string, boolean]> = [
-    ["not a honeypot", !flag(t.is_honeypot)],
+    ["not a honeypot (static + live simulation)", !flag(t.is_honeypot) && (!sim || !sim.is_honeypot)],
+    ["passed a live buy/sell simulation", !!sim && sim.sim_success && !sim.is_honeypot],
     ["source code verified", flag(t.is_open_source)],
-    ["ownership renounced", String(t.owner_address ?? "") === "" || /^0x0+$/.test(String(t.owner_address ?? ""))],
+    ["ownership renounced", ownerRenounced],
     ["cannot mint new supply", !flag(t.is_mintable)],
     ["0% buy & sell tax", (buyTax ?? 0) === 0 && (sellTax ?? 0) === 0],
     ["liquidity locked", lpLocked === true],
@@ -109,8 +184,12 @@ export async function safetyReport(chainKey: string, address: string) {
     token: { name: t.token_name ?? null, symbol: t.token_symbol ?? null },
     verdict,
     risk_score: risk, // 0-100, higher = worse
+    confidence, // high = both methods agree · medium = dynamic n/a on this chain · low = methods disagree
+    needs_review: needsReview,
     red_flags: redFlags,
     green_flags: greenFlags,
+    simulation: sim, // live buy/sell result, or null if unsupported chain / sim unavailable
+    sources, // which methods actually contributed to this verdict
     details: {
       honeypot: flag(t.is_honeypot),
       buy_tax_pct: buyTax,
@@ -122,6 +201,7 @@ export async function safetyReport(chainKey: string, address: string) {
       lp_locked: lpLocked,
       holder_count: Number(t.holder_count) || null,
       creator_address: t.creator_address ?? null,
+      same_creator_honeypot: flag(t.honeypot_with_same_creator),
     },
     as_of: new Date().toISOString(),
   };
@@ -141,7 +221,8 @@ safetyRouter.get("/onchain/safety", (req: Request, res: Response) => {
 export const safetyRoutes = {
   "GET /onchain/safety": {
     accepts: [{ scheme: "exact", price: PRICE_SAFETY, network: NETWORK, payTo: getReceiveAddress() }],
-    description: "Token rug/honeypot safety report: red flags, risk score, verdict",
+    description:
+      "Composite rug check: GoPlus static analysis + honeypot.is LIVE buy/sell simulation, cross-checked. Verdict, 0-100 risk, confidence, serial-rugger flag.",
     mimeType: "application/json",
   },
 };
@@ -151,6 +232,6 @@ export const safetyCatalog = [
     route: "GET /onchain/safety",
     price: PRICE_SAFETY,
     params: "?chain=base&address=0x…",
-    desc: "Rug/honeypot safety report: red flags, 0-100 risk score, ok/warning/danger verdict",
+    desc: "Composite rug check: static bytecode analysis + a LIVE buy/sell simulation, cross-checked (two methods, not one). Verdict + 0-100 risk + confidence + serial-rugger detection",
   },
 ];
