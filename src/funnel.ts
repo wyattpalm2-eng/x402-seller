@@ -54,7 +54,12 @@ export function labelFor(ua: string): string {
   if (!u) return "no-user-agent";
   if (u.includes("x402scan") || u.includes("bazaar")) return "x402scan-indexer";
   if (u.includes("keepwarm") || u.includes("x402-seller")) return "self/keep-warm";
-  if (u.includes("uptimerobot") || u.includes("pingdom") || u.includes("render")) return "uptime-monitor";
+  // Uptime/trust monitors (incl. x402-observer, x402.fuchss.app) — NOT demand.
+  // Checked before the generic "x402/fetch → agent-client" rule so a monitor
+  // never masquerades as a real agent.
+  if (u.includes("uptimerobot") || u.includes("pingdom") || u.includes("render") ||
+      u.includes("observer") || u.includes("monitor") || u.includes("uptime") || u.includes("trust"))
+    return "monitor/uptime";
   if (u.includes("curl") || u.includes("wget") || u.includes("httpie")) return "curl/manual";
   if (u.includes("bot") || u.includes("crawler") || u.includes("spider") || u.includes("scan")) return "crawler";
   // Common programmatic clients — plausibly a real agent's HTTP stack.
