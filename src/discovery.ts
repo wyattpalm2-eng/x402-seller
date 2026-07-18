@@ -278,7 +278,7 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
       input: e.input,
       output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
     })),
-    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats`, llms: `${base}/llms.txt`, openapi: `${base}/openapi.json` },
+    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats`, llms: `${base}/llms.txt`, openapi: `${base}/openapi.json`, examples: `${base}/examples` },
     repository: "https://github.com/wyattpalm2-eng/x402-seller",
     documentation: base,
   });
@@ -290,6 +290,24 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
 // crawlers) fetch at GET /openapi.json to validate and list this service.
 discoveryRouter.get("/openapi.json", (req: Request, res: Response) => {
   res.json(buildOpenApi(baseUrl(req)));
+});
+
+// FREE try-before-you-buy showroom: every paid endpoint with a realistic SAMPLE
+// output, so an evaluating agent can see exactly what it gets before paying.
+// Samples are static examples (not live data) — the paywall still guards the real thing.
+discoveryRouter.get("/examples", (req: Request, res: Response) => {
+  const base = baseUrl(req);
+  res.json({
+    note: "Free samples so you can evaluate before paying. These are illustrative, not live — call the endpoint (and pay the quoted USDC) for real-time data.",
+    network: NETWORK,
+    endpoints: ENDPOINTS.map((e) => ({
+      call: `${e.method} ${base}${e.path}`,
+      price: e.price,
+      description: e.description,
+      input: e.input,
+      sample_output: e.output_example,
+    })),
+  });
 });
 
 // favicon — x402scan flags its absence; makes the marketplace listing look real.
@@ -324,6 +342,7 @@ discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {
     `- x402 manifest: ${base}/.well-known/x402.json`,
     `- agent card:    ${base}/.well-known/agent.json`,
     `- catalog:       ${base}/catalog`,
+    `- free samples:  ${base}/examples  (see every endpoint output before paying)`,
     "",
     `payTo: ${getReceiveAddress()}  network: ${NETWORK}  asset: USDC`,
   ];
