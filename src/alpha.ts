@@ -92,13 +92,30 @@ export async function launchRadar(chainKey: string): Promise<any | null> {
       const rep: any = await safetyReport(chainKey, c.address).catch(() => null); // EVM/Solana shapes differ
       if (!isSol) trackLiquidity(chainKey, c.address);
       const trend = !isSol ? liquidityTrend(chainKey, c.address) : null;
+      const det = rep?.details ?? {};
+      // LP provably locked/burned? (EVM: lp_locked flag · Solana: burn/lock %)
+      const lpLocked = det.lp_locked === true || (det.lp_burn_pct ?? 0) >= 90 || (det.lp_locked_pct ?? 0) >= 80;
+
+      let verdict = rep?.verdict ?? "unknown"; // ok | warning | danger | unknown
+      let topFlag = rep?.red_flags?.[0] ?? null;
+      // FRESH-LAUNCH HONESTY GATE. The contract scan reliably catches honeypots/
+      // taxes/mint, but MOST fresh-launch rugs are LP PULLS — the team removes
+      // liquidity on a token whose contract looks perfectly clean. No point-in-
+      // time scan can predict that, so a clean contract with LP that isn't
+      // provably locked is NOT "clear" — the rug vector is wide open. This is
+      // exactly the miss the public track record surfaced.
+      if (verdict === "ok" && !lpLocked) {
+        verdict = "warning";
+        topFlag = "LP not provably locked — can be rugged by pulling liquidity";
+      }
       return {
         token: c.name || rep?.token?.symbol || null,
         address: c.address,
-        verdict: rep?.verdict ?? "unknown", // ok | warning | danger | unknown
+        verdict,
         risk_score: rep?.risk_score ?? null,
         honeypot: rep?.simulation?.is_honeypot ?? rep?.details?.honeypot_static ?? null,
-        top_flag: rep?.red_flags?.[0] ?? null,
+        lp_locked: rep ? lpLocked : null,
+        top_flag: topFlag,
         green: rep?.green_flags?.[0] ?? null,
         liquidity_usd: c.liquidity_usd,
         liquidity_trend: trend?.verdict ?? null,
@@ -125,11 +142,16 @@ export async function launchRadar(chainKey: string): Promise<any | null> {
   return {
     chain: chainKey,
     headline: safest
-      ? `${summary.clear} of ${summary.scanned} fresh launches look clear — safest: ${safest.token || safest.address.slice(0, 8)}`
-      : `0 of ${summary.scanned} fresh launches are clear — ${summary.avoid} are rugs/honeypots, sit this batch out`,
+      ? `${summary.clear} provably-safer (clean contract + LP locked) of ${summary.scanned} · ${summary.caution} clean-but-LP-unlocked · ${summary.avoid} honeypot traps`
+      : `0 provably safe this batch · ${summary.caution} have clean contracts but UNLOCKED LP (rug-pull risk) · ${summary.avoid} honeypot traps to avoid`,
     summary,
     launches: scored, // ranked safest-first
-    note: "Fresh launches discovered + screened through the composite rug score, ranked safest-first. Each verdict: ok/warning/danger. Not financial advice; a filter, not a guarantee.",
+    verdict_scale: {
+      ok: "clean contract AND LP provably locked/burned — genuinely lower risk",
+      warning: "clean contract but LP NOT locked — the usual fresh-launch state; most rugs are LP pulls a contract scan can't foresee, so treat as ape-at-your-own-risk",
+      danger: "contract trap (honeypot / mint / high tax) — avoid",
+    },
+    note: "Fresh launches discovered + screened, ranked safest-first. The contract scan reliably catches honeypots; it CANNOT predict a future liquidity pull — pair this with /onchain/liquidity to watch the drain in real time. A filter, not a guarantee.",
     as_of: new Date().toISOString(),
   };
 }
