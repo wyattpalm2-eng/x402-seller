@@ -225,8 +225,8 @@
 <main class="wrap" id="main">
 
   <section class="panel glass hero reveal">
-    <div class="lead" id="heroLead">demand · live</div>
-    <h1 id="heroLine">Reading the funnel…</h1>
+    <div class="lead" id="heroLead">connecting</div>
+    <h1 id="heroLine" style="font-weight:400;color:var(--ink-2)">Connecting to mission control…</h1>
     <p class="sub" id="heroSub"></p>
   </section>
 
@@ -322,13 +322,17 @@
 
   function animateNum(el,to,fmtFn){
     if(el.__raf){ cancelAnimationFrame(el.__raf); el.__raf=0; }
+    if(el.__fb){ clearTimeout(el.__fb); el.__fb=0; }
     const from=Number(el.dataset.cur||0);
-    if(RM||from===to){ el.textContent=fmtFn(to); el.dataset.cur=to; return; }
+    const land=()=>{ el.textContent=fmtFn(to); el.dataset.cur=to; };
+    if(RM||from===to){ land(); return; }
     const t0=performance.now(),dur=820;
     const step=(t)=>{ const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,4);
       el.textContent=fmtFn(from+(to-from)*e);
-      if(k<1) el.__raf=requestAnimationFrame(step); else { el.textContent=fmtFn(to); el.dataset.cur=to; el.__raf=0; } };
+      if(k<1) el.__raf=requestAnimationFrame(step); else { land(); el.__raf=0; if(el.__fb){clearTimeout(el.__fb);el.__fb=0;} } };
     el.__raf=requestAnimationFrame(step);
+    // Guarantee the final value even if rAF never fires (backgrounded tab / headless).
+    el.__fb=setTimeout(()=>{ if(el.__raf){cancelAnimationFrame(el.__raf);el.__raf=0;} land(); el.__fb=0; }, dur+400);
   }
 
   // ── WebGL living background (green removed → green stays pure signal) ──
@@ -473,9 +477,18 @@
   }
 
   // ── data loop ────────────────────────────────────────────────────
-  let catalog=null;
-  async function grab(path){ const r=await fetch(path,{cache:"no-store"}); if(!r.ok) throw new Error(path+" "+r.status); return r.json(); }
+  let catalog=null, firstLoad=true, retryT=0;
+  // Hard timeout so a cold-starting / hung endpoint can never freeze a tick.
+  async function grab(path){ const r=await fetch(path,{cache:"no-store",signal:AbortSignal.timeout(15000)}); if(!r.ok) throw new Error(path+" "+r.status); return r.json(); }
   function status(state,text){ const dot=$("#statusDot"); dot.className="dot "+(state==="up"?"live":state==="down"?"down":"warn"); $("#statusText").textContent=text; }
+  function showWaking(){
+    $("#heroLead").textContent="connecting"; $("#heroLead").style.color="var(--amber)";
+    $("#heroLine").style.fontWeight="400"; $("#heroLine").style.color="var(--ink-2)";
+    $("#heroLine").innerHTML=`Waking the service…`;
+    $("#heroSub").innerHTML="Render's free tier cold-starts in ~50s. Retrying automatically — this only happens after it's been idle.";
+    status("warn","waking…"); $("#updated").textContent="waking (Render cold start ~50s)…";
+  }
+  function scheduleRetry(){ if(firstLoad && !retryT){ retryT=setTimeout(()=>{ retryT=0; tick(); },3000); } }
 
   async function tick(){
     const btn=$("#refreshBtn"); btn.setAttribute("aria-busy","true");
@@ -483,7 +496,8 @@
       if(!catalog){ try{catalog=await grab("/catalog");}catch{} }
       const [funnel,stats,track,health]=await Promise.allSettled([grab("/funnel"+q),grab("/stats"),grab("/track-record"),grab("/health")]);
       const anyOk=[funnel,stats,track,health].some(p=>p.status==="fulfilled");
-      if(!anyOk){ status("down","reconnecting…"); $("#updated").textContent="service waking (Render cold start ~50s)…"; return; }
+      if(!anyOk){ if(firstLoad){ showWaking(); scheduleRetry(); } else { status("down","reconnecting…"); $("#updated").textContent="service waking (Render cold start ~50s)…"; } return; }
+      firstLoad=false;
       const locked = funnel.status==="rejected" && String(funnel.reason).includes("403");
       status("up", locked?"funnel locked":"operational");
       const net=(health.status==="fulfilled"&&health.value.network)||(catalog&&catalog.network);
@@ -494,7 +508,7 @@
       render(d);
       if(locked) $("#funnelMeta").innerHTML=`private — append <code>?key=</code>`;
       $("#updated").textContent="updated "+new Date().toLocaleTimeString("en-US",{hour12:false});
-    }catch(e){ status("down","reconnecting…"); $("#updated").textContent="service waking…"; }
+    }catch(e){ if(firstLoad){ showWaking(); scheduleRetry(); } else { status("down","reconnecting…"); $("#updated").textContent="service waking…"; } }
     finally{ setTimeout(()=>btn.removeAttribute("aria-busy"),700); }
   }
 
