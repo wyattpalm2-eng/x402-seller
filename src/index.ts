@@ -237,11 +237,13 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
     });
   if (_demoCount >= DEMO_DAILY_CAP)
     return void res.status(429).json({ error: "demo_limit", detail: "daily demo budget exhausted — the paid endpoint /vet is always available" });
-  _demoLast.set(ip, Date.now());
-  _demoCount++;
   try {
     const data = await vetToken(String(q.chain ?? "base").toLowerCase().trim(), String(q.address));
     if (data == null) return void res.status(404).json({ error: "not_found", detail: "no data for that token" });
+    // Consume the slot only on a SUCCESSFUL demo — a 404/502 must not lock the
+    // caller out for an hour (that would sabotage demo→paid conversion).
+    _demoLast.set(ip, Date.now());
+    _demoCount++;
     res.json({
       ...data,
       demo: { note: "free demo — identical output to the paid /vet, limited to 1/hour", unlimited: "/vet via x402", price: process.env.PRICE_VET || "$0.05" },
@@ -348,12 +350,17 @@ function landingPage(): string {
     (e) => `<tr><td><code>${e.route}${e.params}</code></td><td>${e.price}</td><td>${e.desc}</td></tr>`,
   ).join("");
   // Live proof block: real self-graded track record, rendered server-side.
+  // SECURITY: token symbols come from permissionless on-chain metadata
+  // (attacker-chosen), so every interpolated value MUST be HTML-escaped or a
+  // malicious token symbol becomes stored XSS on this page.
+  const esc = (v: unknown) =>
+    String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
   const tr = trackRecordSummary();
   const s = tr.stats;
   const catches = tr.recent_graded
     .filter((r: any) => (r.our_verdict === "danger" || r.our_verdict === "warning") && r.outcome === "rugged")
     .slice(0, 5)
-    .map((r: any) => `<li><code>${r.token ?? r.address.slice(0, 10)}</code> — flagged <b>${r.our_verdict}</b> (risk ${r.risk_score}), then rugged: ${r.liquidity_remaining_pct ?? "?"}% of liquidity left after ${r.graded_after_h}h</li>`)
+    .map((r: any) => `<li><code>${esc(r.token ?? String(r.address).slice(0, 10))}</code> — flagged <b>${esc(r.our_verdict)}</b> (risk ${esc(r.risk_score)}), then rugged: ${esc(r.liquidity_remaining_pct ?? "?")}% of liquidity left after ${esc(r.graded_after_h)}h</li>`)
     .join("");
   const proof =
     s.graded > 0

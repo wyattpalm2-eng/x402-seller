@@ -168,13 +168,24 @@ async function sweep(): Promise<void> {
   const due = rows.filter((r) => !r.graded && Date.now() - r.t >= GRADE_AFTER_MS).slice(0, 12);
   for (const r of due) {
     try {
+      // No usable baseline (e.g. an old row with null liq0/px0) can't be graded —
+      // mark graded with NO outcome rather than defaulting to a fabricated "fine",
+      // which would inflate accuracy on the public record. Excluded from all
+      // outcome-keyed stats.
+      if ((r.liq0 == null || r.liq0 <= 0) && (r.px0 == null || r.px0 <= 0)) {
+        r.graded = true;
+        r.outcome = undefined;
+        r.graded_after_h = Number(((Date.now() - r.t) / 3_600_000).toFixed(1));
+        persist(r);
+        continue;
+      }
       const now = await liqPx(r.address);
       const liqPct = r.liq0 && r.liq0 > 0 && now.liq !== null ? Number(((now.liq / r.liq0) * 100).toFixed(1)) : null;
       const pxPct = r.px0 && r.px0 > 0 && now.px !== null ? Number(((now.px / r.px0) * 100).toFixed(1)) : null;
       // Grading formula (published verbatim on the endpoint):
       //   rugged: <15% of original liquidity OR price remains (or pool vanished)
       //   dumped: <50% remains  ·  fine: otherwise
-      const gone = now.liq === null && r.liq0 !== null; // pool disappeared entirely
+      const gone = now.liq === null && r.liq0 != null && r.liq0 > 0; // pool disappeared entirely
       const outcome: Row["outcome"] =
         gone || (liqPct !== null && liqPct < 15) || (pxPct !== null && pxPct < 15)
           ? "rugged"

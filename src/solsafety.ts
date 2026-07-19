@@ -74,8 +74,11 @@ export async function solanaSafetyReport(address: string) {
     checks.push(["mint authority live — supply can be printed", auth(gp.mintable), 40]);
     checks.push(["balance-mutable authority — balances can be edited", auth(gp.balance_mutable_authority), 60]);
     checks.push(["token account closable by authority", auth(gp.closable), 40]);
+    // Only trust a plausibly-fractional rate (0..1). GoPlus-Solana's exact
+    // transfer_fee shape varies (and is often {}); a bps/raw value would render
+    // as an absurd percentage, so anything >1 is treated as unknown and skipped.
     const fee = num(gp.transfer_fee?.fee_rate ?? gp.transfer_fee?.transfer_fee_rate);
-    if (fee !== null && fee > 0.05) checks.push([`transfer fee ${(fee * 100).toFixed(1)}%`, true, 40]);
+    if (fee !== null && fee > 0.05 && fee <= 1) checks.push([`transfer fee ${(fee * 100).toFixed(1)}%`, true, 40]);
     if (Array.isArray(gp.transfer_hook) && gp.transfer_hook.length > 0)
       checks.push(["transfer hook present (custom transfer logic)", true, 30]);
 
