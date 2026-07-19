@@ -27,7 +27,12 @@ import { getJson } from "./data.js";
 import { safetyReport } from "./safety.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LEDGER = path.join(__dirname, "..", "track_record.jsonl");
+// Committed, git-versioned path: a GitHub Action snapshots it every ~30min, so
+// the record survives Render redeploys AND becomes a public, append-only,
+// tamper-evident history (stronger trust than an in-memory counter). On boot we
+// load whatever git shipped, then keep appending on the ephemeral disk copy.
+const DATA_DIR = path.join(__dirname, "..", "data");
+const LEDGER = path.join(DATA_DIR, "track_record.jsonl");
 
 const SWEEP_MS = Number(process.env.RECORD_SWEEP_MS || 30 * 60 * 1000); // 30 min
 const GRADE_AFTER_MS = 6 * 60 * 60 * 1000; // grade calls once they're 6h old
@@ -57,10 +62,16 @@ const seen = new Set<string>(); // chain:address we've already recorded
 
 function persist(row: Row): void {
   try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.appendFileSync(LEDGER, JSON.stringify(row) + "\n");
   } catch {
     /* best-effort */
   }
+}
+
+/** All rows (loaded git baseline + this run's) — the GitHub Action snapshots this. */
+export function rawRows(): Row[] {
+  return rows.slice();
 }
 
 function load(): void {
@@ -128,6 +139,10 @@ async function sweep(): Promise<void> {
           liqPx(address),
         ]);
         if (!report) continue;
+        // Only record what we can later GRADE: a token with no measurable
+        // liquidity at call time can't be graded (it would default to "fine"
+        // and quietly inflate the clean-call count). Skip it.
+        if (market.liq == null || market.liq <= 0) continue;
         const row: Row = {
           id: `${Date.now().toString(36)}-${address.slice(2, 8)}`,
           t: Date.now(),

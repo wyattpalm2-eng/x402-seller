@@ -1,0 +1,83 @@
+name: track-record-snapshot
+
+# Snapshots the live self-graded track record into git every 30 minutes.
+# Purpose: (1) the record survives Render redeploys (the server loads
+# data/track_record.jsonl on boot); (2) it becomes a PUBLIC, append-only,
+# git-timestamped history — a stronger trust signal than an in-memory counter,
+# since calls can't be backdated or quietly deleted.
+# Free: public repo = unlimited Actions minutes; commits use the built-in token.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: track-record-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch live rows and merge into the committed ledger
+        run: |
+          set -e
+          # Render free tier can cold-start (~50s); retry a few times.
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS -m 60 "https://x402-seller-m8nx.onrender.com/track-record/raw" -o live.json; then
+              break
+            fi
+            echo "attempt $i failed, waiting 20s"; sleep 20
+          done
+          [ -f live.json ] || { echo "service unreachable — skipping this run"; exit 0; }
+
+          mkdir -p data
+          python3 - <<'PY'
+          import json, os
+          # existing committed rows
+          rows = {}
+          path = "data/track_record.jsonl"
+          if os.path.exists(path):
+              for line in open(path):
+                  line = line.strip()
+                  if not line: continue
+                  try:
+                      r = json.loads(line)
+                      if r.get("id"): rows[r["id"]] = r
+                  except Exception:
+                      pass
+          # live rows (graded versions win, since a graded row supersedes its pending self)
+          live = json.load(open("live.json")).get("rows", [])
+          for r in live:
+              rid = r.get("id")
+              if not rid: continue
+              prev = rows.get(rid)
+              # keep whichever is graded, else the newer object
+              if prev is None or (r.get("graded") and not prev.get("graded")):
+                  rows[rid] = r
+          # write sorted by call time; cap to a sane size
+          out = sorted(rows.values(), key=lambda r: r.get("t", 0))[-5000:]
+          with open(path, "w") as f:
+              for r in out:
+                  f.write(json.dumps(r) + "\n")
+          print(f"ledger now {len(out)} rows")
+          PY
+          rm -f live.json
+
+      - name: Commit if changed
+        run: |
+          git config user.name "track-record-bot"
+          git config user.email "actions@github.com"
+          git add data/track_record.jsonl
+          if git diff --cached --quiet; then
+            echo "no change"
+          else
+            git commit -m "chore(track-record): snapshot $(date -u +%FT%TZ)"
+            git push
+          fi

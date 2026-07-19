@@ -21,7 +21,7 @@ import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./der
 import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./screen.js";
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief, vetToken } from "./composites.js";
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
-import { startRecord, trackRecordSummary } from "./record.js";
+import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 import { recordView, markBuyer, funnel } from "./funnel.js";
@@ -206,6 +206,8 @@ app.get("/funnel", freeRateLimit, (req, res) => {
 // FREE public self-graded track record — the proof a skeptical agent needs
 // before paying: our scorer graded against real outcomes, misses included.
 app.get("/track-record", freeRateLimit, (_req, res) => res.json(trackRecordSummary()));
+// Raw rows for the git snapshot Action (free; public on-chain data only, no PII).
+app.get("/track-record/raw", freeRateLimit, (_req, res) => res.json({ rows: rawRows() }));
 
 // FREE live demo: ONE real /vet per IP per hour (global daily cap). Agents
 // integrate what they can test end-to-end without money — the paid calls come
