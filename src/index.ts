@@ -20,6 +20,7 @@ import { safetyRouter, safetyRoutes, safetyCatalog, validateSafety } from "./saf
 import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./derivs.js";
 import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./screen.js";
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief } from "./composites.js";
+import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 import { recordView, markBuyer, funnel } from "./funnel.js";
@@ -68,6 +69,7 @@ const CATALOG = [
   ...premiumCatalog,
   ...cryptoCatalog,
   ...safetyCatalog,
+  ...historyCatalog,
   ...derivsCatalog,
   ...screenCatalog,
   ...compositesCatalog,
@@ -95,6 +97,7 @@ const routes = {
   ...premiumRoutes,
   ...cryptoRoutes,
   ...safetyRoutes,
+  ...historyRoutes,
   ...derivsRoutes,
   ...screenRoutes,
   ...compositesRoutes,
@@ -190,6 +193,7 @@ app.use((req, res, next) => {
   const q = req.query as Record<string, any>;
   let err: string | null = null;
   if (req.path === "/onchain/safety") err = validateSafety(q);
+  else if (req.path === "/onchain/liquidity") err = validateLiquidity(q);
   else if (req.path.startsWith("/onchain/")) err = validateOnchain(req.path, q);
   else if (req.path === "/derivs") err = validateDerivs(q);
   else if (req.path === "/screen") err = validateScreen(q);
@@ -209,6 +213,7 @@ app.use(paymentMiddleware(routes, resourceServer));
 // Paid handlers. Only run AFTER payment has settled (paywall above).
 app.use(premiumRouter);
 app.use(safetyRouter); // before cryptoRouter so /onchain/safety wins over any generic /onchain match
+app.use(historyRouter); // /onchain/liquidity
 app.use(cryptoRouter);
 app.use(derivsRouter);
 app.use(screenRouter);
@@ -265,6 +270,7 @@ app.listen(PORT, () => {
   console.log("");
   console.log(`  Try the paywall:  curl -i http://localhost:${PORT}/price?symbol=BTC`);
   console.log("  (expect HTTP 402 + payment instructions)\n");
+  startHistory(); // begin collecting the liquidity time-series (the /onchain/liquidity moat)
 });
 
 function landingPage(): string {

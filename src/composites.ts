@@ -23,12 +23,13 @@ import { cryptoPrice, fearGreed } from "./data.js";
 import { tokenSnapshot, serve } from "./crypto.js";
 import { safetyReport, validateSafety, SAFETY_CHAINS } from "./safety.js";
 import { derivsSnapshot } from "./derivs.js";
+import { liquidityTrend, track as trackLiquidity } from "./history.js";
 import { getReceiveAddress } from "./wallet.js";
 import { priceToUsd } from "./stats.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_VET = process.env.PRICE_VET || "$0.02";
-export const PRICE_BRIEF = process.env.PRICE_BRIEF || "$0.02";
+export const PRICE_VET = process.env.PRICE_VET || "$0.05";
+export const PRICE_BRIEF = process.env.PRICE_BRIEF || "$0.03";
 
 const SYMBOL_RE = /^[A-Z0-9-]{1,12}$/;
 
@@ -58,6 +59,11 @@ export async function vetToken(chainKey: string, address: string) {
     if (security.verdict === "danger") verdict = "avoid";
     else if (security.verdict === "warning") verdict = "caution";
     why.push(...security.red_flags.map((f: string) => `security: ${f}`));
+    // Static vs live-simulation disagreement must never read as "clear".
+    if (security.needs_review) {
+      if (verdict === "clear") verdict = "caution";
+      why.push("security: static and live-sim checks disagree — treat as unverified");
+    }
   } else {
     verdict = "caution";
     why.push("security: no contract report available — treat as unverified");
@@ -76,9 +82,25 @@ export async function vetToken(chainKey: string, address: string) {
   }
   if (!market) why.push("market: no DEX pair found");
 
+  // Live liquidity trend (our self-collected series). A pool whose liquidity is
+  // draining is a rug/exit in progress even when the contract looks clean —
+  // this is the signal no static check and no free API can give.
+  trackLiquidity(chainKey, address); // ensure we keep collecting for next time
+  const liqTrend = liquidityTrend(chainKey, address);
+  if (liqTrend) {
+    const chg = liqTrend.change_pct_1h ?? liqTrend.change_pct_window;
+    if (liqTrend.verdict === "draining_fast") {
+      verdict = "avoid";
+      why.push(`liquidity: draining fast (${chg}% over ${liqTrend.window_minutes}m) — possible rug in progress`);
+    } else if (liqTrend.verdict === "draining") {
+      if (verdict === "clear") verdict = "caution";
+      why.push(`liquidity: trending down (${chg}% over ${liqTrend.window_minutes}m)`);
+    }
+  }
+
   // Confidence: how much of the picture we actually had.
   const confidence = market && security ? "high" : "low";
-  if (verdict === "clear" && why.length === 0) why.push("no red flags across contract security and market structure");
+  if (verdict === "clear" && why.length === 0) why.push("no red flags across contract security, live simulation, and liquidity trend");
 
   return {
     verdict, // clear | caution | avoid — read this first
@@ -97,8 +119,16 @@ export async function vetToken(chainKey: string, address: string) {
         }
       : null,
     security: security
-      ? { risk_score: security.risk_score, red_flags: security.red_flags, details: security.details }
+      ? {
+          risk_score: security.risk_score,
+          needs_review: security.needs_review,
+          confidence: security.confidence,
+          red_flags: security.red_flags,
+          simulation: security.simulation,
+          details: security.details,
+        }
       : null,
+    liquidity_trend: liqTrend, // null until we've collected enough history
     as_of: new Date().toISOString(),
   };
 }
@@ -172,7 +202,7 @@ function accept(price: string, description: string) {
 }
 
 export const compositesRoutes = {
-  "GET /vet": accept(PRICE_VET, "One-call token due diligence: market + contract security → clear/caution/avoid verdict"),
+  "GET /vet": accept(PRICE_VET, "Flagship one-call token go/no-go: market + composite rug score (static + live sim) + liquidity-drain trend → clear/caution/avoid"),
   "GET /brief": accept(PRICE_BRIEF, "One-call market regime brief: spot + funding/OI + sentiment → risk_on/risk_off verdict"),
 };
 
@@ -181,7 +211,7 @@ export const compositesCatalog = [
     route: "GET /vet",
     price: PRICE_VET,
     params: "?chain=base&address=0x…",
-    desc: "ANSWER endpoint — token due diligence in one call: clear/caution/avoid + reasons (replaces 2-3 raw lookups + parsing)",
+    desc: "FLAGSHIP ANSWER — one-call token go/no-go: fuses market + composite rug score (static + live buy/sell simulation + serial-rugger) + our self-collected liquidity-drain trend → clear/caution/avoid with reasons. Replaces 4+ lookups and the reasoning to merge them.",
   },
   {
     route: "GET /brief",

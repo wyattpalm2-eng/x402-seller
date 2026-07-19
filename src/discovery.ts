@@ -17,16 +17,20 @@ const FACILITATOR = process.env.FACILITATOR_URL?.trim() || "https://x402.org/fac
 const IS_MAINNET = NETWORK === "eip155:8453";
 const NAME = "x402-seller";
 const DESCRIPTION =
-  "Decision-ready market + on-chain intelligence for autonomous agents. Keyless by design: " +
-  "no signup, no API key, no rate-limit account — pay a cent per request in USDC (x402) and get " +
-  "verdict-first JSON built to be cheap to reason over. ANSWER endpoints (/vet token due diligence, " +
-  "/brief market regime) replace 2-3 raw API calls + signup walls + parsing tokens with one call. " +
-  "Plus raw feeds: prices, stocks, DEX pools, new launches, rug checks, perp funding/OI.";
+  "Rug protection and decision-ready intelligence for autonomous trading agents. Keyless by design: " +
+  "no signup, no API key — pay a cent per request in USDC (x402). The flagship /vet gives a token go/no-go " +
+  "in ONE call by fusing a COMPOSITE rug score (GoPlus static analysis + a LIVE Honeypot.is buy/sell " +
+  "simulation + serial-rugger check) with our SELF-COLLECTED liquidity-drain trend — a rug-in-progress " +
+  "signal that exists nowhere for free because it requires collecting reserves over time. One call is " +
+  "cheaper than the inference tokens you'd burn stitching 4 free APIs, and it stops your agent losing its " +
+  "whole position to a honeypot. Also: /onchain/liquidity drain detector, /screen batch watchlist check, " +
+  "/brief market regime, and raw feeds (prices, stocks, DEX pools, launches, perp funding/OI).";
 const WHY_PAY = [
+  "avoid catastrophic loss: /vet + /onchain/safety catch honeypots and draining liquidity BEFORE your agent apes in — one bad ape costs more than 10,000 calls",
+  "data that isn't free anywhere: a LIVE buy/sell simulation and a self-collected liquidity-drain time-series — not a re-wrap of a public snapshot",
   "keyless: an agent cannot fill signup forms or manage API keys — x402 payment IS the auth",
-  "one call per decision: /vet and /brief merge multiple sources into a verdict, saving the caller's inference tokens",
-  "verdict-first JSON: read field 1, act; reasons included for audit",
-  "always-warm cache: no 429s, no free-tier throttling, stale-while-revalidate under the hood",
+  "one call per decision: /vet fuses 4+ sources into a verdict, so you spend a cent instead of the inference tokens to reconcile them yourself",
+  "verdict-first JSON: read field 1 (clear/caution/avoid), act; reasons + a needs_review disagreement flag included for audit",
 ];
 
 const P = {
@@ -38,10 +42,11 @@ const P = {
   trending: process.env.PRICE_ONCHAIN_TRENDING || "$0.005",
   newp: process.env.PRICE_ONCHAIN_NEW || "$0.01",
   defi: process.env.PRICE_ONCHAIN_DEFI || "$0.005",
-  safety: process.env.PRICE_ONCHAIN_SAFETY || "$0.01",
+  safety: process.env.PRICE_ONCHAIN_SAFETY || "$0.03",
+  liquidity: process.env.PRICE_ONCHAIN_LIQUIDITY || "$0.01",
   derivs: process.env.PRICE_DERIVS || "$0.01",
-  vet: process.env.PRICE_VET || "$0.02",
-  brief: process.env.PRICE_BRIEF || "$0.02",
+  vet: process.env.PRICE_VET || "$0.05",
+  brief: process.env.PRICE_BRIEF || "$0.03",
   screen: process.env.PRICE_SCREEN || "$0.03",
 };
 
@@ -113,14 +118,29 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/onchain/safety", price: P.safety,
-    description: "Token rug/honeypot safety report: contract red flags (honeypot, taxes, hidden mint, LP lock), 0-100 risk score, ok/warning/danger verdict. EVM chains only.",
+    description: "COMPOSITE rug/honeypot score: fuses GoPlus static analysis with a LIVE Honeypot.is buy/sell simulation, plus a serial-rugger check, hard-zero honeypot gates, and an agreement factor that flags when the two methods disagree. Returns ok/warning/danger + a 0-100 risk score + red/green flags + the raw simulation. More trustworthy than any single free feed. EVM chains only.",
     input: {
       address: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933" },
       chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
     },
     output_example: {
-      chain: "eth", token: { symbol: "PEPE" }, verdict: "ok", risk_score: 0,
-      red_flags: [], details: { honeypot: false, sell_tax_pct: 0, lp_locked: true, holder_count: 571757 },
+      chain: "eth", token: { symbol: "PEPE" }, verdict: "ok", risk_score: 10, confidence: "high", needs_review: false,
+      red_flags: ["blacklist function present"], green_flags: ["passed live buy & sell simulation", "0% simulated buy & sell tax", "source code verified", "ownership renounced"],
+      simulation: { is_honeypot: false, simulated: true, buy_tax_pct: 0, sell_tax_pct: 0, risk: "low" },
+      sources: ["goplus (static)", "honeypot.is (dynamic sim)"],
+    },
+  },
+  {
+    method: "GET", path: "/onchain/liquidity", price: P.liquidity,
+    description: "Liquidity-DRAIN detector from a SELF-COLLECTED reserve time-series (exists nowhere for free — we poll pool reserves over time). Answers 'is liquidity leaving this pool right now?' — the earliest sign of a rug or dump in progress. Returns draining_fast/draining/stable/growing + %-change over 1h and the observed window. First call on a cold token returns 404 (uncharged) and starts tracking it; call again once history has built. EVM chains only.",
+    input: {
+      address: { type: "string", required: true, example: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
+    },
+    output_example: {
+      verdict: "draining_fast", chain: "base", address: "0x4ed4…", liquidity_usd_now: 812000,
+      change_pct_1h: -31.4, change_pct_window: -44.2, window_minutes: 190, data_points: 63,
+      note: "liquidity falling fast — possible rug/exit in progress",
     },
   },
   {
@@ -135,16 +155,17 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/vet", price: P.vet,
-    description: "ANSWER: one-call token due diligence. Merges DEX market structure + contract security into a verdict your agent can act on directly: clear / caution / avoid, with reasons. Replaces 2-3 raw lookups and the tokens to reconcile them.",
+    description: "FLAGSHIP ANSWER: one-call token go/no-go. Fuses DEX market structure + the COMPOSITE rug score (static + LIVE buy/sell simulation + serial-rugger) + our self-collected LIQUIDITY-DRAIN trend into one verdict your agent acts on directly: clear / caution / avoid, with reasons. Replaces 4+ raw lookups and the inference to reconcile them; catches honeypots and rugs-in-progress a single free feed misses.",
     input: {
       address: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933" },
       chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
     },
     output_example: {
-      verdict: "caution", confidence: "high",
-      why: ["security: blacklist function present", "market: thin liquidity ($8,400)"],
-      token: { symbol: "PEPE" }, market: { price_usd: 0.0000271, liquidity_usd: 8400 },
-      security: { risk_score: 25, red_flags: ["blacklist function present"] },
+      verdict: "avoid", confidence: "high",
+      why: ["security: high simulated sell tax 35%", "liquidity: draining fast (-31.4% over 190m) — possible rug in progress"],
+      token: { symbol: "SCAMCOIN" }, market: { price_usd: 0.0000041, liquidity_usd: 812000 },
+      security: { risk_score: 40, needs_review: false, red_flags: ["high simulated sell tax 35%"], simulation: { is_honeypot: false, sell_tax_pct: 35 } },
+      liquidity_trend: { verdict: "draining_fast", change_pct_1h: -31.4, window_minutes: 190 },
     },
   },
   {
@@ -210,7 +231,7 @@ function buildOpenApi(base: string) {
     openapi: "3.1.0",
     info: {
       title: NAME,
-      version: "0.3.0",
+      version: "0.4.0",
       description: DESCRIPTION,
       "x-guidance":
         "Keyless x402 API. GET any path with no payment for the 402 challenge, pay the quoted USDC amount " +
@@ -264,7 +285,7 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
     name: NAME,
     description: DESCRIPTION,
     why_pay: WHY_PAY,
-    version: "0.3.0",
+    version: "0.4.0",
     url: base,
     protocols: ["x402"],
     provider: { wallet: getReceiveAddress(), network: NETWORK, mainnet: IS_MAINNET },
