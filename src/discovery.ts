@@ -332,6 +332,12 @@ discoveryRouter.get("/examples", (req: Request, res: Response) => {
   });
 });
 
+// 402index.io domain-verification proof (public domain-proof token, not a secret).
+// Verified domains get instant approval + self-service editing on the directory.
+discoveryRouter.get("/.well-known/402index-verify.txt", (_req: Request, res: Response) => {
+  res.type("text/plain").send("81e436127078c2aa3a02c6397f75eb1a99298d7c584e6a366daf6f077d468367");
+});
+
 // favicon — x402scan flags its absence; makes the marketplace listing look real.
 // Tiny inline SVG "$" mark, no binary asset needed.
 discoveryRouter.get("/favicon.ico", (_req: Request, res: Response) => {
