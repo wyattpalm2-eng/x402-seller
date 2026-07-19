@@ -51,6 +51,9 @@ export const SAFETY_CHAINS = [...Object.keys(GOPLUS_CHAINS), "solana"];
 // Elsewhere we degrade to GoPlus-only and say so in the report.
 const HONEYPOT_CHAINS = new Set(["1", "56", "8453"]);
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
+// Holder count at/above which a token is treated as "established" — its LP-lock
+// status stops being a first-class rug signal (blue chips shouldn't false-flag).
+const HOLDER_ESTABLISHED = 5000;
 
 /** Pre-paywall validation: 400 before charging for a doomed call. */
 export function validateSafety(q: Record<string, any>): string | null {
@@ -158,6 +161,14 @@ export async function safetyReport(chainKey: string, address: string) {
         [`static sell tax over 10% (${gpSellTax ?? "?"}%)`, (gpSellTax ?? 0) > 10, 45],
         [`static buy tax over 10% (${gpBuyTax ?? "?"}%)`, (gpBuyTax ?? 0) > 10, 30],
         ["LP not locked", lpLocked === false, 25],
+        // LIQUIDITY-PULL GATE. Our public track record proved the real miss:
+        // small/new tokens with a clean contract but LP that isn't provably
+        // locked get rugged by pulling liquidity — a vector no contract scan can
+        // foresee. So on a low-holder token, un-verified LP is a genuine caution
+        // (not "clear"). Blue chips (holders >= HOLDER_ESTABLISHED) are exempt:
+        // their LP-lock status matters far less and they shouldn't false-flag.
+        ["LP not verified-locked on a small/new token (liquidity-pull rug vector)",
+          lpLocked !== true && (Number(t.holder_count) || 0) < HOLDER_ESTABLISHED, 30],
       ]
     : [];
 
