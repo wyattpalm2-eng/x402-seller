@@ -75,14 +75,24 @@ Honest answer: the *snapshots* are free — the **judgment and the history are n
 
 ## Use as an MCP tool (Claude Code, Cursor, any MCP client)
 
-Rug-checking as an agent tool **that pays for itself**:
+Rug-checking + launch radar as agent tools. Two ways in:
+
+**Hosted (no install)** — add the remote MCP server, free demo tools out of the box:
+
+```bash
+claude mcp add --transport http x402-seller https://x402-seller-m8nx.onrender.com/mcp
+```
+
+Tools: `vet_token` · `launch_radar` · `rug_check` · `track_record` · `catalog` (shared free daily demo budget; unlimited via the paid HTTP API). Published to the [official MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.wyattpalm2-eng/x402-seller`.
+
+**Local (self-hosted, pays for itself)** — clone and run the stdio server, add a burner key for unlimited paid calls:
 
 ```bash
 git clone https://github.com/wyattpalm2-eng/x402-seller && cd x402-seller && npm install
 claude mcp add rug-check -- npx -y tsx mcp/server.mts
 ```
 
-Tools: `vet_token` · `rug_check` · `liquidity_trend` · `market_brief` · `track_record` · `catalog`.
+Tools: `vet_token` · `launch_radar` · `rug_check` · `liquidity_trend` · `market_brief` · `track_record` · `catalog`.
 
 - **No config:** works immediately — `vet_token` routes through the free demo (1 real call/hour),
   `track_record`/`catalog` are always free.

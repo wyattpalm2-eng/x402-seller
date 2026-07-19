@@ -26,6 +26,7 @@ import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, val
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
 import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
+import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 import { recordView, markBuyer, funnel } from "./funnel.js";
@@ -277,6 +278,14 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
   }
 });
 app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
+
+// Remote MCP server (free, before the paywall): POST /mcp (Streamable HTTP).
+// Lets Claude/Cursor use x402-seller directly + makes it official-registry
+// listable as a remote server. Its own JSON body parser (the rest of the API
+// is GET-only, so no global body parsing).
+app.post("/mcp", express.json({ limit: "512kb" }), handleMcp);
+app.get("/mcp", mcpMethodNotAllowed);
+app.delete("/mcp", mcpMethodNotAllowed);
 
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
 app.use(discoveryRouter);
