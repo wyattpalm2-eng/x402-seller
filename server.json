@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.wyattpalm2-eng/x402-seller",
   "title": "x402-seller — rug protection & safe-alpha for trading agents",
-  "description": "Discover fresh token launches and rug-screen them: composite honeypot score (static analysis + live buy/sell simulation) with a liquidity-pull gate, a launch radar, and a liquidity-drain detector. EVM + Solana. Keyless, pay-per-call in USDC on Base via x402. Includes free demo tools and a public self-graded track record.",
+  "description": "Rug-check & launch radar for trading agents: composite honeypot score, EVM+Solana, keyless x402.",
   "version": "1.0.0",
   "repository": {
     "url": "https://github.com/wyattpalm2-eng/x402-seller",
