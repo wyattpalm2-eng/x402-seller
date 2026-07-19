@@ -21,6 +21,7 @@ import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./der
 import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./screen.js";
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief } from "./composites.js";
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
+import { startRecord, trackRecordSummary } from "./record.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 import { recordView, markBuyer, funnel } from "./funnel.js";
@@ -181,6 +182,9 @@ app.get("/funnel", freeRateLimit, (req, res) => {
     return void res.status(403).json({ error: "forbidden", detail: "pass ?key= to view the funnel" });
   return void res.json(funnel(stats().totalPaidCalls));
 });
+// FREE public self-graded track record — the proof a skeptical agent needs
+// before paying: our scorer graded against real outcomes, misses included.
+app.get("/track-record", freeRateLimit, (_req, res) => res.json(trackRecordSummary()));
 app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
 
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
@@ -271,6 +275,7 @@ app.listen(PORT, () => {
   console.log(`  Try the paywall:  curl -i http://localhost:${PORT}/price?symbol=BTC`);
   console.log("  (expect HTTP 402 + payment instructions)\n");
   startHistory(); // begin collecting the liquidity time-series (the /onchain/liquidity moat)
+  startRecord(); // begin the self-graded track record (/track-record — the public receipts)
 });
 
 function landingPage(): string {
@@ -292,7 +297,8 @@ Agents: fetch <code>/llms.txt</code> or <code>/.well-known/x402.json</code> and 
 <table><tr><th>Endpoint</th><th>Price</th><th>Returns</th></tr>${rows}</table>
 <p><span class="k">Network:</span> ${NET_LABEL}<br>
 <span class="k">Pay to:</span> <span class="pay">${PAY_TO}</span><br>
-<span class="k">Machine-readable catalog:</span> <code>GET /catalog</code></p>
+<span class="k">Machine-readable catalog:</span> <code>GET /catalog</code><br>
+<span class="k">Proof we're right:</span> <code>GET /track-record</code> — our rug verdicts graded against real outcomes, misses included (free)</p>
 <p class="k">Hit any paid endpoint with no payment and you get an HTTP 402 with instructions.
 An x402-capable client pays automatically and retries.</p>`;
 }

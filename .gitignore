@@ -3,3 +3,4 @@ node_modules/
 wallet.json
 sales.jsonl
 *.log
+track_record.jsonl

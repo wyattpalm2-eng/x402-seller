@@ -30,11 +30,13 @@ import { cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
+import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 export const PRICE_SAFETY = process.env.PRICE_ONCHAIN_SAFETY || "$0.03";
 
-// our slug -> GoPlus numeric chain id. EVM only (GoPlus Solana is a different API).
+// our slug -> GoPlus numeric chain id (EVM). Solana routes to solsafety.ts
+// (GoPlus Solana API + RugCheck — a different composite for different rug physics).
 const GOPLUS_CHAINS: Record<string, string> = {
   base: "8453",
   eth: "1",
@@ -44,7 +46,7 @@ const GOPLUS_CHAINS: Record<string, string> = {
   arbitrum: "42161",
   optimism: "10",
 };
-export const SAFETY_CHAINS = Object.keys(GOPLUS_CHAINS);
+export const SAFETY_CHAINS = [...Object.keys(GOPLUS_CHAINS), "solana"];
 // Chains where Honeypot.is dynamic simulation is available (verified live).
 // Elsewhere we degrade to GoPlus-only and say so in the report.
 const HONEYPOT_CHAINS = new Set(["1", "56", "8453"]);
@@ -53,13 +55,18 @@ const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 /** Pre-paywall validation: 400 before charging for a doomed call. */
 export function validateSafety(q: Record<string, any>): string | null {
   const chain = String(q.chain ?? "base").toLowerCase().trim();
-  if (!Object.prototype.hasOwnProperty.call(GOPLUS_CHAINS, chain)) {
+  const isSolana = chain === "solana";
+  if (!isSolana && !Object.prototype.hasOwnProperty.call(GOPLUS_CHAINS, chain)) {
     return `unsupported chain "${chain.slice(0, 24)}". supported: ${SAFETY_CHAINS.join(", ")}`;
   }
   // Missing address: let it reach the paywall (a discovery probe with no query
   // params must still see 402, not 400 — the handler 404s gracefully post-pay).
   // PROVIDED-but-malformed address: reject before charging, that's real abuse.
-  if (q.address !== undefined && !EVM_ADDR.test(String(q.address))) return "invalid EVM token address";
+  if (q.address !== undefined) {
+    const a = String(q.address);
+    if (isSolana ? !SOL_ADDR.test(a) : !EVM_ADDR.test(a))
+      return isSolana ? "invalid Solana token mint address" : "invalid EVM token address";
+  }
   return null;
 }
 
@@ -100,6 +107,7 @@ async function honeypotSim(chainId: string, address: string) {
 }
 
 export async function safetyReport(chainKey: string, address: string) {
+  if (chainKey === "solana") return solanaSafetyReport(address); // dual-engine Solana composite
   if (!EVM_ADDR.test(address)) return null; // missing/empty address (e.g. a bare discovery probe) -> clean 404
   const chainId = GOPLUS_CHAINS[chainKey]; // validated upstream
   const addr = address.toLowerCase();
@@ -275,6 +283,6 @@ export const safetyCatalog = [
     route: "GET /onchain/safety",
     price: PRICE_SAFETY,
     params: "?chain=base&address=0x…",
-    desc: "Composite rug score: static analysis + LIVE buy/sell simulation + serial-rugger check → one ok/warning/danger verdict with a disagreement flag",
+    desc: "Composite rug score (EVM + Solana): static analysis + LIVE buy/sell simulation (EVM) / dual-engine authority+LP analysis (Solana) + serial-rugger check → ok/warning/danger with a disagreement flag",
   },
 ];

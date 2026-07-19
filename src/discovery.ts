@@ -26,6 +26,7 @@ const DESCRIPTION =
   "whole position to a honeypot. Also: /onchain/liquidity drain detector, /screen batch watchlist check, " +
   "/brief market regime, and raw feeds (prices, stocks, DEX pools, launches, perp funding/OI).";
 const WHY_PAY = [
+  "public self-graded track record at /track-record (free): our scorer graded against real outcomes, misses included — evidence, not claims",
   "avoid catastrophic loss: /vet + /onchain/safety catch honeypots and draining liquidity BEFORE your agent apes in — one bad ape costs more than 10,000 calls",
   "data that isn't free anywhere: a LIVE buy/sell simulation and a self-collected liquidity-drain time-series — not a re-wrap of a public snapshot",
   "keyless: an agent cannot fill signup forms or manage API keys — x402 payment IS the auth",
@@ -118,10 +119,10 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/onchain/safety", price: P.safety,
-    description: "COMPOSITE rug/honeypot score: fuses GoPlus static analysis with a LIVE Honeypot.is buy/sell simulation, plus a serial-rugger check, hard-zero honeypot gates, and an agreement factor that flags when the two methods disagree. Returns ok/warning/danger + a 0-100 risk score + red/green flags + the raw simulation. More trustworthy than any single free feed. EVM chains only.",
+    description: "COMPOSITE rug/honeypot score: fuses GoPlus static analysis with a LIVE Honeypot.is buy/sell simulation, plus a serial-rugger check, hard-zero honeypot gates, and an agreement factor that flags when the two methods disagree. Returns ok/warning/danger + a 0-100 risk score + red/green flags + the raw simulation. More trustworthy than any single free feed. On Solana, fuses GoPlus-Solana + RugCheck (mint/freeze authorities, holder concentration, LP burn) — same dual-engine design.",
     input: {
       address: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933" },
-      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism", "solana"] },
     },
     output_example: {
       chain: "eth", token: { symbol: "PEPE" }, verdict: "ok", risk_score: 10, confidence: "high", needs_review: false,
@@ -155,10 +156,10 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/vet", price: P.vet,
-    description: "FLAGSHIP ANSWER: one-call token go/no-go. Fuses DEX market structure + the COMPOSITE rug score (static + LIVE buy/sell simulation + serial-rugger) + our self-collected LIQUIDITY-DRAIN trend into one verdict your agent acts on directly: clear / caution / avoid, with reasons. Replaces 4+ raw lookups and the inference to reconcile them; catches honeypots and rugs-in-progress a single free feed misses.",
+    description: "FLAGSHIP ANSWER: one-call token go/no-go. Fuses DEX market structure + the COMPOSITE rug score (static + LIVE buy/sell simulation + serial-rugger) + our self-collected LIQUIDITY-DRAIN trend into one verdict your agent acts on directly: clear / caution / avoid, with reasons. Replaces 4+ raw lookups and the inference to reconcile them; catches honeypots and rugs-in-progress a single free feed misses. Supports EVM chains AND Solana.",
     input: {
       address: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933" },
-      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism", "solana"] },
     },
     output_example: {
       verdict: "avoid", confidence: "high",
@@ -299,7 +300,7 @@ discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => 
       input: e.input,
       output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
     })),
-    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats`, llms: `${base}/llms.txt`, openapi: `${base}/openapi.json`, examples: `${base}/examples` },
+    discovery: { x402: `${base}/.well-known/x402.json`, catalog: `${base}/catalog`, stats: `${base}/stats`, llms: `${base}/llms.txt`, openapi: `${base}/openapi.json`, examples: `${base}/examples`, track_record: `${base}/track-record` },
     repository: "https://github.com/wyattpalm2-eng/x402-seller",
     documentation: base,
   });
@@ -364,6 +365,7 @@ discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {
     `- agent card:    ${base}/.well-known/agent.json`,
     `- catalog:       ${base}/catalog`,
     `- free samples:  ${base}/examples  (see every endpoint output before paying)`,
+    `- track record:  ${base}/track-record  (our verdicts graded against real outcomes — hits AND misses, free)`,
     "",
     `payTo: ${getReceiveAddress()}  network: ${NETWORK}  asset: USDC`,
   ];

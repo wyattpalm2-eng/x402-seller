@@ -129,6 +129,7 @@ export async function vetToken(chainKey: string, address: string) {
         }
       : null,
     liquidity_trend: liqTrend, // null until we've collected enough history
+    proof: "/track-record", // free: this exact scorer graded against real outcomes
     as_of: new Date().toISOString(),
   };
 }
