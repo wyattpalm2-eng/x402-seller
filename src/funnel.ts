@@ -144,6 +144,9 @@ export function funnel(totalBuys: number) {
       conversion_pct: conversionPct,
     },
     views_by_endpoint: viewsByPath,
+    // Callers whose IP later hit a paid 200 — they converted. Surfaced so the
+    // dashboard can show buyers as their own rows (the payoff at the top).
+    converted: converted.slice(0, 20).map(fmtShopper),
     // Who looked and didn't buy — real (unlabeled/agent) callers first, bots last.
     window_shoppers: shoppers
       .sort((a, b) => {

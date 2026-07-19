@@ -8,6 +8,9 @@
  * The caller's wallet pays, retries, and gets the data. USDC lands in PAY_TO.
  */
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express, { type Request, type Response } from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -203,6 +206,24 @@ app.get("/funnel", freeRateLimit, (req, res) => {
     return void res.status(403).json({ error: "forbidden", detail: "pass ?key= to view the funnel" });
   return void res.json(funnel(stats().totalPaidCalls));
 });
+// Mission-control dashboard (human-facing): visitors, funnel, revenue, track
+// record. Static HTML that client-fetches the JSON endpoints. Optionally gated
+// by FUNNEL_KEY (same as /funnel) since it surfaces visitor IPs.
+const DASHBOARD_HTML = (() => {
+  try {
+    const p = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "dashboard.html");
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return "<!doctype html><title>dashboard</title><p>dashboard.html not found</p>";
+  }
+})();
+app.get("/dashboard", freeRateLimit, (req, res) => {
+  const key = process.env.FUNNEL_KEY?.trim();
+  if (key && String(req.query.key ?? "") !== key)
+    return void res.status(403).type("html").send("<!doctype html><title>locked</title><body style='font:16px system-ui;max-width:40ch;margin:15vh auto;color:#333'><h3>Dashboard is private</h3><p>Append <code>?key=YOUR_KEY</code> to the URL.</p>");
+  res.type("html").send(DASHBOARD_HTML);
+});
+
 // FREE public self-graded track record — the proof a skeptical agent needs
 // before paying: our scorer graded against real outcomes, misses included.
 app.get("/track-record", freeRateLimit, (_req, res) => res.json(trackRecordSummary()));

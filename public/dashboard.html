@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>x402-seller · mission control</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070a10;
+    --surface:#0b1119;          /* solid data panels */
+    --surface-2:#0e1620;
+    --glass:rgba(9,13,20,0.78);  /* frosted chrome only (header, hero) */
+    --line:rgba(120,180,220,0.13);
+    --line-2:rgba(120,180,220,0.24);
+    --ink:#eaf2f8;
+    --ink-2:#a9bccd;
+    --ink-3:#8a9cb0;            /* lifted to clear 4.5:1 on solid surface */
+    --cyan:#2ee6f0;
+    --cyan-dim:#189aa4;
+    --green:#3af5a6;
+    --rose:#ff5d6c;
+    --amber:#ffc247;
+    --violet:#9b7bff;
+    --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --sans:"Space Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --z-bg:0; --z-scrim:1; --z-content:2; --z-head:20;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh}
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:4px}
+
+  /* ── living background ─────────────────────────────────────────── */
+  #gl{position:fixed;inset:0;width:100vw;height:100vh;z-index:var(--z-bg);display:block;pointer-events:none}
+  #glfallback{position:fixed;inset:0;z-index:var(--z-bg);pointer-events:none;
+    background:radial-gradient(60% 50% at 18% 8%, rgba(46,230,240,0.12), transparent 60%),
+      radial-gradient(50% 60% at 88% 16%, rgba(155,123,255,0.12), transparent 60%),#070a10}
+  #vign{position:fixed;inset:0;z-index:var(--z-scrim);pointer-events:none;
+    background:radial-gradient(130% 100% at 50% 0%, transparent 52%, rgba(3,5,9,0.8) 100%)}
+
+  .wrap{position:relative;z-index:var(--z-content);max-width:1440px;margin:0 auto;padding:0 clamp(16px,3vw,36px) 80px}
+  .skip{position:absolute;left:-9999px;top:0;background:var(--cyan);color:#04121a;padding:8px 14px;border-radius:8px;font-weight:600;z-index:100}
+  .skip:focus{left:12px;top:12px}
+
+  /* ── masthead (frosted chrome) ─────────────────────────────────── */
+  header.top{position:sticky;top:0;z-index:var(--z-head);display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:13px clamp(16px,3vw,36px);
+    background:linear-gradient(180deg, rgba(7,10,16,0.9), rgba(7,10,16,0.55));
+    backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);
+    border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+  .brand .mark{font-family:var(--mono);font-weight:700;font-size:19px;letter-spacing:-0.02em}
+  .brand .mark b{color:var(--cyan)}
+  .brand .tag{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:var(--ink-3)}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;padding:6px 11px;
+    border:1px solid var(--line);border-radius:999px;color:var(--ink-2);background:rgba(12,18,26,0.6)}
+  .chip b{color:var(--ink)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);position:relative;box-shadow:0 0 10px var(--green)}
+  .dot.live::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--green);animation:ring 2.4s ease-out infinite}
+  .dot.down{background:var(--rose);box-shadow:0 0 10px var(--rose)} .dot.down::after{border-color:var(--rose);animation:none}
+  .dot.warn{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+  @keyframes ring{0%{transform:scale(1);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+  .updated{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .refresh{cursor:pointer;background:none;border:1px solid var(--line);color:var(--ink-2);border-radius:999px;width:32px;height:32px;
+    display:grid;place-items:center;transition:.2s}
+  .refresh:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 16px rgba(46,230,240,.25)}
+  .refresh[aria-busy="true"] svg{animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ── panels: SOLID by default (material = hierarchy, not decoration) ── */
+  section.panel{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;
+    overflow:hidden;box-shadow:0 20px 50px -34px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.03)}
+  section.panel.glass{background:var(--glass);backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25)}
+  .phead{display:flex;align-items:center;gap:11px;margin:0 0 16px}
+  .phead h2{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:13px;font-weight:500;letter-spacing:-0.01em;
+    color:var(--ink-2);margin:0;text-transform:lowercase}
+  .phead h2::before{content:"";width:3px;height:14px;border-radius:2px;background:var(--cyan);box-shadow:0 0 8px rgba(46,230,240,.5)}
+  .phead .spacer{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+  .phead .meta{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+
+  .stack{display:flex;flex-direction:column;gap:18px;margin-top:18px}
+  .cols{display:grid;gap:18px}
+  @media(min-width:760px){.cols.two{grid-template-columns:1fr 1fr}.cols.wide{grid-template-columns:1.35fr 1fr}}
+
+  /* ── hero (frosted, shader breathes behind the headline) ───────── */
+  .hero{margin-top:24px;padding:32px 28px}
+  .hero .lead{font-family:var(--mono);font-size:12px;letter-spacing:0.24em;text-transform:uppercase;color:var(--cyan);margin-bottom:14px}
+  .hero h1{font-size:clamp(28px,4.6vw,54px);line-height:1.02;letter-spacing:-0.03em;margin:0;font-weight:300;text-wrap:balance}
+  .hero h1 .n{font-family:var(--mono);font-weight:700;letter-spacing:-0.04em}
+  .hero h1 .real{color:var(--green);text-shadow:0 0 34px rgba(58,245,166,.45)}
+  .hero h1 .zero{color:var(--ink);font-weight:400}
+  .hero h1 .noise{color:var(--ink-3)}
+  .hero .sub{margin-top:16px;color:var(--ink-2);max-width:70ch;font-size:15px;text-wrap:pretty}
+  .hero .sub b{color:var(--ink);font-weight:600}
+
+  /* ── KPI band: PRIMARY pair large, secondary row small ─────────── */
+  .kpi-primary{display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+  @media(min-width:560px){.kpi-primary{grid-template-columns:1fr 1fr}}
+  .kpi-primary .p{background:var(--surface);padding:24px 24px 22px}
+  .kpi-primary .k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
+  .kpi-primary .v{font-family:var(--mono);font-weight:700;font-size:clamp(40px,6vw,60px);line-height:.92;letter-spacing:-0.03em;color:var(--ink)}
+  .kpi-primary .v.hot{color:var(--green);text-shadow:0 0 30px rgba(58,245,166,.4)}
+  .kpi-primary .u{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-top:10px}
+  .kpi-secondary{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line)}
+  @media(min-width:720px){.kpi-secondary{grid-template-columns:repeat(4,1fr)}}
+  .kpi-secondary .s{background:var(--surface);padding:16px 22px}
+  .kpi-secondary .k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi-secondary .v{font-family:var(--mono);font-weight:600;font-size:22px;line-height:1;color:var(--ink);letter-spacing:-0.02em;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .flash{animation:flash 1.1s ease-out}
+  @keyframes flash{0%{background:rgba(46,230,240,.14)}100%{background:var(--surface)}}
+
+  /* ── funnel: tapering silhouette that tells the drop-off story ─── */
+  .funnel{display:flex;flex-direction:column;align-items:center;gap:0}
+  .fstage{width:100%;display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px}
+  .fstage .flabel{font-size:12.5px;color:var(--ink-2);grid-column:1;justify-self:start}
+  .fstage .fbarwrap{grid-column:1;grid-row:2}
+  .fstage .fval{grid-column:2;grid-row:1/3;font-family:var(--mono);font-weight:700;font-size:20px;text-align:right;min-width:44px}
+  .fbarwrap{display:flex;justify-content:center;margin-top:5px}
+  .fbar{height:38px;border-radius:9px;width:0;transition:width 1.1s cubic-bezier(.16,1,.3,1);min-width:8px}
+  .fbar-views{background:linear-gradient(90deg,rgba(46,230,240,.35),rgba(46,230,240,.7));box-shadow:0 0 24px rgba(46,230,240,.22)}
+  .fbar-real{background:linear-gradient(90deg,rgba(58,245,166,.4),rgba(58,245,166,.8));box-shadow:0 0 24px rgba(58,245,166,.3)}
+  .fbar-buys{background:linear-gradient(90deg,rgba(255,194,71,.45),rgba(255,194,71,.85));box-shadow:0 0 24px rgba(255,194,71,.3)}
+  .fdrop{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);padding:7px 0;letter-spacing:.02em}
+  .fdrop b{color:var(--rose)} .fdrop.good b{color:var(--green)}
+
+  /* ── endpoint bars ─────────────────────────────────────────────── */
+  .ebars{display:flex;flex-direction:column;gap:10px}
+  .ebar .er{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px}
+  .ebar .er>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ebar .ep{font-family:var(--mono);font-size:13px;color:var(--ink)}
+  .ebar .epr{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .ebar .ev{font-family:var(--mono);font-size:13px;color:var(--ink-2);flex:none}
+  .ebar .track{height:6px;border-radius:4px;background:rgba(120,180,220,.08);overflow:hidden}
+  .ebar .trackfill{height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));
+    box-shadow:0 0 10px rgba(46,230,240,.45);transition:width 1s cubic-bezier(.16,1,.3,1)}
+
+  /* ── visitor table ─────────────────────────────────────────────── */
+  .vfilter{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--ink-2);cursor:pointer;user-select:none}
+  .vfilter input{accent-color:var(--cyan)}
+  .vscroll{overflow-x:auto}
+  table.visitors{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.visitors th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);text-align:left;font-weight:600;padding:0 14px 10px;white-space:nowrap}
+  table.visitors td{padding:12px 14px;border-top:1px solid var(--line);vertical-align:middle}
+  table.visitors tbody tr{transition:background .2s}
+  table.visitors tbody tr:hover{background:rgba(46,230,240,.05)}
+  tr.real{background:linear-gradient(90deg,rgba(58,245,166,.08),transparent 60%)}
+  tr.real:hover{background:linear-gradient(90deg,rgba(58,245,166,.13),transparent 60%)}
+  .lbl{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:6px;white-space:nowrap;border:1px solid transparent}
+  .lbl::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .lbl.real{color:var(--green);background:rgba(58,245,166,.1);border-color:rgba(58,245,166,.3)}
+  .lbl.mon{color:var(--amber);background:rgba(255,194,71,.08);border-color:rgba(255,194,71,.2)}
+  .lbl.idx{color:var(--cyan);background:rgba(46,230,240,.08);border-color:rgba(46,230,240,.2)}
+  .lbl.bot{color:var(--ink-2);background:rgba(120,180,220,.06);border-color:var(--line)}
+  .ip{font-family:var(--mono);font-size:13px;color:var(--ink)}
+  .ua{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .eps{display:flex;flex-wrap:wrap;gap:4px}
+  .eps span{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);background:rgba(120,180,220,.07);border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+  .num{font-family:var(--mono);color:var(--ink)}
+  .rel{font-family:var(--mono);font-size:12px;color:var(--ink-3);white-space:nowrap}
+
+  /* ── activity feed ─────────────────────────────────────────────── */
+  .feed{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow-y:auto}
+  .fitem{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid var(--line)}
+  .fitem.new{animation:slidein .5s cubic-bezier(.16,1,.3,1)}
+  @keyframes slidein{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+  .fitem .fp{font-family:var(--mono);font-size:12.5px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fitem .frel{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+
+  /* ── track record ──────────────────────────────────────────────── */
+  .trstats{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px}
+  .trstats .c{background:var(--surface-2);padding:14px 13px}
+  .trstats .c.hero-cell{background:linear-gradient(180deg,rgba(58,245,166,.06),var(--surface-2))}
+  .trstats .c .n{font-family:var(--mono);font-weight:700;font-size:22px;line-height:1}
+  .trstats .c.hero-cell .n{font-size:28px;color:var(--green)}
+  .trstats .c .l{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);margin-top:6px}
+  .trstats .c .sub{font-size:10.5px;color:var(--ink-3);margin-top:3px}
+  .catch{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+  .catch .v{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;flex:none}
+  .v.danger{color:var(--rose);background:rgba(255,93,108,.12)}
+  .v.warning{color:var(--amber);background:rgba(255,194,71,.12)}
+  .v.ok{color:var(--green);background:rgba(58,245,166,.12)}
+  .catch .tk{font-family:var(--mono);color:var(--ink);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .catch .oc{margin-left:auto;font-family:var(--mono);font-size:12px;flex:none;white-space:nowrap}
+  .oc.rugged{color:var(--rose)} .oc.dumped{color:var(--amber)} .oc.fine{color:var(--green)}
+
+  .empty{text-align:center;padding:26px 16px;color:var(--ink-2);font-size:14px}
+  .empty .big{font-family:var(--mono);color:var(--ink);font-size:15px;margin-bottom:6px}
+  .empty .hint{font-size:13px;color:var(--ink-3)}
+
+  footer.foot{margin-top:32px;padding-top:20px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;line-height:1.7}
+  footer.foot b{color:var(--ink-2)} footer.foot code{font-family:var(--mono);color:var(--ink-2)}
+
+  .reveal{opacity:0;transform:translateY(14px)}
+  .revealed{opacity:1;transform:none;transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important}
+    .reveal{opacity:1;transform:none}
+    :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  }
+</style>
+</head>
+<body>
+<a href="#main" class="skip">Skip to content</a>
+<canvas id="gl"></canvas>
+<div id="glfallback" hidden></div>
+<div id="vign"></div>
+
+<header class="top">
+  <div class="brand"><span class="mark">x402<b>·</b>seller</span><span class="tag">mission control</span></div>
+  <span class="chip"><span class="dot live" id="statusDot"></span><span id="statusText" role="status" aria-live="polite">connecting…</span></span>
+  <span class="chip" id="netChip"><b>Base</b> mainnet</span>
+  <span class="updated" id="updated" aria-live="polite">—</span>
+  <button class="refresh" id="refreshBtn" title="Refresh now" aria-label="Refresh data">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+  </button>
+</header>
+
+<main class="wrap" id="main">
+
+  <section class="panel glass hero reveal">
+    <div class="lead" id="heroLead">demand · live</div>
+    <h1 id="heroLine">Reading the funnel…</h1>
+    <p class="sub" id="heroSub"></p>
+  </section>
+
+  <div class="stack">
+
+    <section class="panel reveal" style="padding:0">
+      <div class="kpi-primary">
+        <div class="p"><div class="k">Real agents</div><div class="v" data-stat="real">—</div><div class="u">non-bot callers this session</div></div>
+        <div class="p"><div class="k">Buys</div><div class="v" data-stat="buys">—</div><div class="u">paid deliveries</div></div>
+      </div>
+      <div class="kpi-secondary">
+        <div class="s"><div class="k">Views (402s)</div><div class="v" data-stat="views">—</div></div>
+        <div class="s"><div class="k">Est. revenue</div><div class="v" data-stat="rev">—</div></div>
+        <div class="s"><div class="k">Conversion</div><div class="v" data-stat="conv">—</div></div>
+        <div class="s"><div class="k">Unique IPs</div><div class="v" data-stat="ips">—</div></div>
+      </div>
+    </section>
+
+    <div class="cols two">
+      <section class="panel reveal">
+        <div class="phead"><h2>demand funnel</h2><div class="spacer"></div><div class="meta" id="funnelMeta"></div></div>
+        <div class="funnel">
+          <div class="fstage"><div class="flabel">views · 402 challenges</div><div class="fbarwrap"><div class="fbar fbar-views" data-f="views"></div></div><div class="fval" data-fv="views">—</div></div>
+          <div class="fdrop" data-drop="1">—</div>
+          <div class="fstage"><div class="flabel">real agents</div><div class="fbarwrap"><div class="fbar fbar-real" data-f="real"></div></div><div class="fval" data-fv="real">—</div></div>
+          <div class="fdrop" data-drop="2">—</div>
+          <div class="fstage"><div class="flabel">buys</div><div class="fbarwrap"><div class="fbar fbar-buys" data-f="buys"></div></div><div class="fval" data-fv="buys">—</div></div>
+        </div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="phead"><h2>most-probed endpoints</h2><div class="spacer"></div><div class="meta" id="epMeta"></div></div>
+        <div class="ebars" id="ebars"><div class="empty">waiting for traffic…</div></div>
+      </section>
+    </div>
+
+    <section class="panel reveal">
+      <div class="phead"><h2>visitors</h2><div class="spacer"></div>
+        <label class="vfilter"><input type="checkbox" id="hideBots"> hide bots &amp; monitors</label></div>
+      <div class="vscroll">
+        <table class="visitors">
+          <thead><tr><th scope="col">Type</th><th scope="col">IP</th><th scope="col">User-Agent</th><th scope="col" style="text-align:right">Views</th><th scope="col">Endpoints</th><th scope="col" style="text-align:right">Last seen</th></tr></thead>
+          <tbody id="vbody"><tr><td colspan="6" class="empty">connecting…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="cols wide">
+      <section class="panel reveal">
+        <div class="phead"><h2>live activity</h2><div class="spacer"></div><div class="meta" id="feedMeta"></div></div>
+        <div class="feed" id="feed"><div class="empty">no activity yet</div></div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="phead"><h2>rug-scorer track record</h2><div class="spacer"></div><div class="meta" id="trMeta"></div></div>
+        <div class="trstats">
+          <div class="c hero-cell"><div class="n" data-tr="flagged">—</div><div class="l">rugs flagged</div><div class="sub" id="flaggedSub">before they happened</div></div>
+          <div class="c"><div class="n" style="color:var(--ink)" data-tr="graded">—</div><div class="l">graded</div></div>
+          <div class="c"><div class="n" style="color:var(--rose)" data-tr="missed">—</div><div class="l">missed</div></div>
+        </div>
+        <div id="catches"></div>
+      </section>
+    </div>
+
+  </div>
+
+  <footer class="foot">
+    <div>Funnel &amp; activity are in-memory and reset on redeploy — a live view, not a ledger. Unpaid callers have no wallet, so "who" is an IP + User-Agent fingerprint; labeled bots (monitors, indexers, keep-warm) aren't real demand. <b>On-chain USDC at the wallet is the truth for money.</b></div>
+    <div style="margin-top:8px">wallet <code id="wallet">—</code> · <a href="/track-record">track record</a> · <a href="/catalog">catalog</a> · <a href="/llms.txt">llms.txt</a> · <a href="/">storefront</a></div>
+  </footer>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const Q = new URLSearchParams(location.search);
+  const q = Q.toString() ? "?" + Q.toString() : "";
+  const $ = (s,r=document)=>r.querySelector(s);
+  const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+  const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const esc = (s)=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const fmt = (n)=>(n==null||Number.isNaN(n))?"—":Number(n).toLocaleString("en-US");
+  const usd = (n)=>(n==null||Number.isNaN(n))?"—":"$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:n<1?3:2,maximumFractionDigits:3});
+  const REAL = new Set(["unknown","agent-client"]);
+  const isReal = (l)=>REAL.has(l);
+  function rel(iso){ if(!iso) return "—"; const ms=Date.parse(iso); if(Number.isNaN(ms)) return "—";
+    const s=Math.max(0,(Date.now()-ms)/1000);
+    if(s<60) return Math.floor(s)+"s ago"; if(s<3600) return Math.floor(s/60)+"m ago";
+    if(s<86400) return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+  function lblClass(l){ if(isReal(l))return"real"; if(l==="monitor/uptime")return"mon"; if(l==="x402scan-indexer")return"idx"; return"bot"; }
+  function shortLabel(l){ return {"agent-client":"agent","monitor/uptime":"monitor","x402scan-indexer":"indexer","self/keep-warm":"self","no-user-agent":"no-ua","curl/manual":"curl"}[l]||l; }
+
+  function animateNum(el,to,fmtFn){
+    if(el.__raf){ cancelAnimationFrame(el.__raf); el.__raf=0; }
+    const from=Number(el.dataset.cur||0);
+    if(RM||from===to){ el.textContent=fmtFn(to); el.dataset.cur=to; return; }
+    const t0=performance.now(),dur=820;
+    const step=(t)=>{ const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,4);
+      el.textContent=fmtFn(from+(to-from)*e);
+      if(k<1) el.__raf=requestAnimationFrame(step); else { el.textContent=fmtFn(to); el.dataset.cur=to; el.__raf=0; } };
+    el.__raf=requestAnimationFrame(step);
+  }
+
+  // ── WebGL living background (green removed → green stays pure signal) ──
+  function initGL(){
+    const cv=$("#gl"); const gl=cv.getContext("webgl",{antialias:false,alpha:false,powerPreference:"high-performance"});
+    if(!gl){ cv.hidden=true; $("#glfallback").hidden=false; return; }
+    const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}`;
+    const fs=`precision highp float;uniform vec2 u_res;uniform float u_time;uniform float u_energy;
+      float hash(vec2 p){p=fract(p*vec2(123.34,345.45));p+=dot(p,p+34.345);return fract(p.x*p.y);}
+      float noise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash(i),b=hash(i+vec2(1,0)),c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));
+        vec2 u=f*f*(3.0-2.0*f);return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
+      float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<6;i++){v+=a*noise(p);p=p*2.02+vec2(1.7,9.2);a*=0.5;}return v;}
+      void main(){vec2 uv=gl_FragCoord.xy/u_res.xy;vec2 p=(gl_FragCoord.xy-0.5*u_res.xy)/u_res.y;
+        float t=u_time*0.05;
+        vec2 qv=vec2(fbm(p*1.4+t),fbm(p*1.4-t+5.2));
+        vec2 r=vec2(fbm(p*2.0+qv*1.6+t*1.1),fbm(p*2.0+qv*1.6-t*0.9));
+        float f=fbm(p*2.6+r*2.2);
+        vec3 col=vec3(0.02,0.035,0.055);
+        vec3 teal=vec3(0.12,0.7,0.82), viol=vec3(0.42,0.32,0.85);
+        col=mix(col,teal*0.78,smoothstep(0.28,0.95,f)*0.62);
+        col=mix(col,viol*0.6,smoothstep(0.5,0.98,qv.x)*0.34);
+        col+=teal*0.16*pow(smoothstep(0.82,1.0,f),2.0);
+        col*=(0.92+0.35*u_energy);
+        vec2 g=abs(fract(uv*vec2(u_res.x/u_res.y*22.0,22.0))-0.5);
+        col+=vec3(0.05,0.11,0.15)*smoothstep(0.46,0.5,max(g.x,g.y))*0.14;
+        float vig=smoothstep(1.55,0.08,length(p));
+        col*=0.42+0.6*vig;
+        gl_FragColor=vec4(col,1.0);}`;
+    function sh(t,src){const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(s);return s;}
+    let prog; try{prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,vs));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);}
+    catch(e){cv.hidden=true;$("#glfallback").hidden=false;return;}
+    gl.useProgram(prog);
+    const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+    const loc=gl.getAttribLocation(prog,"p");gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+    const uRes=gl.getUniformLocation(prog,"u_res"),uTime=gl.getUniformLocation(prog,"u_time"),uEn=gl.getUniformLocation(prog,"u_energy");
+    let energy=0;
+    function resize(){const dpr=Math.min(devicePixelRatio||1,2);cv.width=Math.floor(innerWidth*dpr);cv.height=Math.floor(innerHeight*dpr);
+      gl.viewport(0,0,cv.width,cv.height);gl.uniform2f(uRes,cv.width,cv.height);}
+    addEventListener("resize",resize);resize();
+    const t0=performance.now();let raf=0;
+    const frame=(t)=>{gl.uniform1f(uTime,(t-t0)/1000);gl.uniform1f(uEn,energy);gl.drawArrays(gl.TRIANGLES,0,3);raf=requestAnimationFrame(frame);};
+    if(RM){gl.uniform1f(uTime,4.0);gl.uniform1f(uEn,0);gl.drawArrays(gl.TRIANGLES,0,3);}
+    else raf=requestAnimationFrame(frame);
+    document.addEventListener("visibilitychange",()=>{ if(document.hidden){cancelAnimationFrame(raf);raf=0;} else if(!RM&&!raf){raf=requestAnimationFrame(frame);} });
+    window.__setEnergy=(e)=>{energy=Math.max(0,Math.min(1,e));};
+  }
+
+  // ── render ───────────────────────────────────────────────────────
+  let prev={};
+  function setStat(name,val,fmtFn,hot){
+    const el=$(`[data-stat="${name}"]`); if(!el) return;
+    if(prev[name]!==undefined&&prev[name]!==val){ const cell=el.closest(".p,.s"); if(cell){cell.classList.remove("flash");void cell.offsetWidth;cell.classList.add("flash");} }
+    if(hot!==undefined) el.classList.toggle("hot",!!hot);
+    animateNum(el,val,fmtFn); prev[name]=val;
+  }
+
+  function render(d){
+    const f=d.funnel||{},s=f.summary||{},st=d.stats||{},tr=d.track||{};
+    const shoppers=f.window_shoppers||[];
+    const realSeen=shoppers.filter(v=>isReal(v.label)).length+(s.converted_viewers||0);
+    const botSeen=Math.max(0,(s.unique_viewers||0)-realSeen);
+    const views=s.total_views||0, buys=st.totalPaidCalls||s.total_buys||0, rev=st.estRevenueUsd||0;
+
+    // hero
+    const hero=$("#heroLine"),sub=$("#heroSub"),lead=$("#heroLead");
+    if(buys>0){ lead.textContent="revenue · live"; lead.style.color="var(--green)";
+      hero.innerHTML=`<span class="n real">${fmt(buys)}</span> paid ${buys===1?"call":"calls"} · <span class="n real">${usd(rev)}</span> est`;
+      sub.innerHTML="An agent paid. <b>Check the wallet</b> for the on-chain truth — that's real money in.";
+    } else if(realSeen>0){ lead.textContent="demand · live"; lead.style.color="var(--cyan)";
+      hero.innerHTML=`<span class="n real">${fmt(realSeen)}</span> real ${realSeen===1?"agent":"agents"} found you · <span class="noise">${fmt(botSeen)} bots</span> · <span class="zero">0 paid yet</span>`;
+      sub.innerHTML="A non-bot caller hit the paywall but hasn't paid. <b>This is the signal that matters</b> — watch for a buy.";
+    } else { lead.textContent="demand · waiting"; lead.style.color="var(--cyan)";
+      hero.innerHTML=`<span class="n zero">0</span> real agents yet · <span class="noise">${fmt(botSeen)} ${botSeen===1?"bot":"bots"} probing</span>`;
+      sub.innerHTML="Listed on 6+ directories with a working v2 discovery contract. <b>You'll see the second a real agent arrives</b> — right here."; }
+    if(window.__setEnergy) window.__setEnergy(buys>0?1:realSeen>0?0.6:0);
+
+    // KPIs — glow only when the number MEANS something
+    setStat("real",realSeen,fmt,realSeen>0);
+    setStat("buys",buys,fmt,buys>0);
+    setStat("views",views,fmt);
+    setStat("rev",rev,usd);
+    setStat("conv",s.conversion_pct==null?0:s.conversion_pct,(n)=>s.conversion_pct==null?"—":n.toFixed(1)+"%");
+    setStat("ips",s.unique_viewers||0,fmt);
+
+    // funnel (tapering) + drop-off story
+    const fmax=Math.max(views,1);
+    const setF=(name,val)=>{ const fill=$(`[data-f="${name}"]`),v=$(`[data-fv="${name}"]`);
+      if(fill) fill.style.width=(val>0?Math.max(6,(val/fmax)*100):3)+"%"; if(v) v.textContent=fmt(val); };
+    setF("views",views);setF("real",realSeen);setF("buys",buys);
+    const d1=$('[data-drop="1"]'),d2=$('[data-drop="2"]');
+    if(views>0){ const pct=Math.round(((views-realSeen)/views)*100); d1.innerHTML=`↓ <b>${pct}%</b> are bots / infrastructure`; d1.classList.remove("good"); }
+    else d1.textContent="↓";
+    if(realSeen>0){ const pct=Math.round(((realSeen-buys)/realSeen)*100); d2.innerHTML= buys>0?`↓ <b>${pct}%</b> didn't convert`:`↓ <b>0 of ${realSeen}</b> paid — the gap you're closing`; d2.classList.toggle("good",buys>0); }
+    else d2.textContent="↓";
+    $("#funnelMeta").textContent=s.conversion_pct==null?"no conversions yet":Number(s.conversion_pct).toFixed(1)+"% convert";
+
+    // endpoint bars
+    const vbe=f.views_by_endpoint||{};
+    const priceMap={}; (d.catalog?.endpoints||[]).forEach(e=>priceMap[e.route.replace("GET ","")]=e.price);
+    const eps=Object.entries(vbe).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const emax=Math.max(...eps.map(e=>e[1]),1); const eb=$("#ebars");
+    if(!eps.length){ eb.innerHTML=`<div class="empty">no endpoints probed yet</div>`; $("#epMeta").textContent=""; }
+    else { $("#epMeta").textContent=eps.length+" active";
+      eb.innerHTML=eps.map(([path,n])=>`<div class="ebar"><div class="er"><span><span class="ep">${esc(path)}</span> ${priceMap[path]?`<span class="epr">${esc(priceMap[path])}</span>`:""}</span><span class="ev">${fmt(n)}</span></div><div class="track"><div class="trackfill" style="width:0"></div></div></div>`).join("");
+      requestAnimationFrame(()=>$$("#ebars .trackfill").forEach((el,i)=>el.style.width=(eps[i][1]/emax)*100+"%")); }
+
+    renderVisitors(shoppers,f.converted||[]);
+
+    // feed
+    const feed=$("#feed"),events=f.recent_views||[];
+    if(!events.length){ feed.innerHTML=`<div class="empty">no activity yet — every paywall hit lands here</div>`; $("#feedMeta").textContent=""; }
+    else { $("#feedMeta").textContent=events.length+" recent"; const topKey=feed.dataset.top||"";
+      feed.innerHTML=events.map((e,i)=>{ const isNew=i===0&&(e.at+e.path)!==topKey;
+        return `<div class="fitem ${isNew?"new":""}"><span class="lbl ${lblClass(e.label)}">${esc(shortLabel(e.label))}</span><span class="fp">${esc(e.path)}</span><span class="frel">${rel(e.at)}</span></div>`; }).join("");
+      feed.dataset.top=(events[0].at+events[0].path); }
+
+    // track record
+    const S=tr.stats||{};
+    const setTr=(k,v)=>{ const el=$(`[data-tr="${k}"]`); if(el) animateNum(el,v||0,fmt); };
+    setTr("flagged",S.rugs_we_flagged); setTr("graded",S.graded); setTr("missed",S.rugs_we_missed);
+    $("#flaggedSub").textContent=`of ${S.rugs_observed||0} rugs · ${S.false_alarms||0} false alarm${S.false_alarms===1?"":"s"}`;
+    $("#trMeta").textContent=(S.graded>0)?`${S.rugs_observed||0} rugs seen`:"grading…";
+    const cs=$("#catches"),graded=(tr.recent_graded||[]).filter(r=>r.outcome);
+    if(!S.graded) cs.innerHTML=`<div class="empty"><div class="big">grading in progress</div><div class="hint">we score fresh Base launches every 30 min, then grade them 6h later. First verdicts land soon — <a href="/track-record">watch it build</a>.</div></div>`;
+    else if(!graded.length) cs.innerHTML=`<div class="empty hint">${S.graded} graded, no notable catches yet</div>`;
+    else cs.innerHTML=graded.slice(0,6).map(r=>`<div class="catch"><span class="v ${esc(r.our_verdict)}">${esc(r.our_verdict)}</span><span class="tk">${esc(r.token||String(r.address||"").slice(0,8))}</span><span class="oc ${esc(r.outcome)}">→ ${esc(r.outcome)}${r.liquidity_remaining_pct!=null?" ("+esc(r.liquidity_remaining_pct)+"% liq)":""}</span></div>`).join("");
+  }
+
+  function renderVisitors(shoppers,converted){
+    const hide=$("#hideBots").checked;
+    let rows=[...(converted||[]).map(v=>({...v,converted:true})),...shoppers];
+    if(hide) rows=rows.filter(v=>isReal(v.label)||v.converted);
+    rows.sort((a,b)=>{ const w=v=>v.converted?0:isReal(v.label)?1:2; return w(a)-w(b)||(b.views||0)-(a.views||0); });
+    const tb=$("#vbody");
+    if(!rows.length){ tb.innerHTML=`<tr><td colspan="6" class="empty">${hide?"no real agents yet — untick to see bots/monitors":"no visitors recorded this session"}</td></tr>`; return; }
+    tb.innerHTML=rows.slice(0,60).map(v=>{ const cls=v.converted?"real":lblClass(v.label);
+      const lbl=v.converted?"buyer ✓":shortLabel(v.label);
+      const eps=(v.endpoints||[]).slice(0,5).map(e=>`<span>${esc(e)}</span>`).join("");
+      return `<tr class="${isReal(v.label)||v.converted?"real":""}"><td><span class="lbl ${cls}">${esc(lbl)}</span></td><td class="ip">${esc(v.ip||"—")}</td><td><div class="ua" title="${esc(v.user_agent||"")}">${esc(v.user_agent||"—")}</div></td><td style="text-align:right" class="num">${fmt(v.views||0)}</td><td><div class="eps">${eps||"—"}</div></td><td style="text-align:right" class="rel">${rel(v.last_seen)}</td></tr>`; }).join("");
+  }
+
+  // ── data loop ────────────────────────────────────────────────────
+  let catalog=null;
+  async function grab(path){ const r=await fetch(path,{cache:"no-store"}); if(!r.ok) throw new Error(path+" "+r.status); return r.json(); }
+  function status(state,text){ const dot=$("#statusDot"); dot.className="dot "+(state==="up"?"live":state==="down"?"down":"warn"); $("#statusText").textContent=text; }
+
+  async function tick(){
+    const btn=$("#refreshBtn"); btn.setAttribute("aria-busy","true");
+    try{
+      if(!catalog){ try{catalog=await grab("/catalog");}catch{} }
+      const [funnel,stats,track,health]=await Promise.allSettled([grab("/funnel"+q),grab("/stats"),grab("/track-record"),grab("/health")]);
+      const anyOk=[funnel,stats,track,health].some(p=>p.status==="fulfilled");
+      if(!anyOk){ status("down","reconnecting…"); $("#updated").textContent="service waking (Render cold start ~50s)…"; return; }
+      const locked = funnel.status==="rejected" && String(funnel.reason).includes("403");
+      status("up", locked?"funnel locked":"operational");
+      const net=(health.status==="fulfilled"&&health.value.network)||(catalog&&catalog.network);
+      if(net) $("#netChip").innerHTML=net==="eip155:8453"?"<b>Base</b> mainnet":"<b>"+esc(net)+"</b>";
+      const wallet=(health.status==="fulfilled"&&health.value.payTo)||(catalog&&catalog.payTo);
+      if(wallet) $("#wallet").textContent=wallet;
+      const d={ funnel: funnel.status==="fulfilled"?funnel.value:{summary:{}}, stats: stats.status==="fulfilled"?stats.value:{}, track: track.status==="fulfilled"?track.value:{}, catalog, _locked:locked };
+      render(d);
+      if(locked) $("#funnelMeta").innerHTML=`private — append <code>?key=</code>`;
+      $("#updated").textContent="updated "+new Date().toLocaleTimeString("en-US",{hour12:false});
+    }catch(e){ status("down","reconnecting…"); $("#updated").textContent="service waking…"; }
+    finally{ setTimeout(()=>btn.removeAttribute("aria-busy"),700); }
+  }
+
+  function reveal(){ if(RM){$$(".reveal").forEach(el=>el.classList.add("revealed"));return;}
+    $$(".reveal").forEach((el,i)=>setTimeout(()=>el.classList.add("revealed"),80+i*90)); }
+
+  try{ initGL(); }catch(e){ $("#gl").hidden=true; $("#glfallback").hidden=false; }
+  reveal();
+  $("#refreshBtn").addEventListener("click",tick);
+  $("#hideBots").addEventListener("change",tick);
+  tick();
+  setInterval(()=>{ if(!document.hidden) tick(); },20000);
+})();
+</script>
+</body>
+</html>
