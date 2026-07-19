@@ -70,6 +70,16 @@ server.tool(
 );
 
 server.tool(
+  "launch_radar",
+  "Discover what just launched AND rug-screen it in ONE call: returns fresh token launches ranked safest-first, each with a composite rug verdict (ok/warning/danger), risk score, honeypot flag, and liquidity. The proactive 'give me safe alpha' call — replaces an agent's whole discover→screen→rank pipeline. (~$0.08/call with X402_BUYER_PK.)",
+  { chain: z.enum(CHAINS).default("base") },
+  async ({ chain }) => {
+    const text = await call(`/alpha/launches?chain=${encodeURIComponent(chain)}`, true);
+    return { content: [{ type: "text", text }] };
+  },
+);
+
+server.tool(
   "rug_check",
   "Detailed composite rug/honeypot report for a token: red/green flags, 0-100 risk score, live simulation results, needs_review disagreement flag. Paid (~$0.03/call, needs X402_BUYER_PK); without a key returns payment instructions — use vet_token for the free demo path.",
   { chain: z.enum(CHAINS).default("base"), address: z.string() },

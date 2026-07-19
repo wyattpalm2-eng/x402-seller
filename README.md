@@ -45,7 +45,8 @@ const r = await payFetch("https://x402-seller-m8nx.onrender.com/vet?chain=base&a
 
 | Route | Price | What you get |
 |---|---|---|
-| `GET /vet?chain=&address=` | $0.05 | **Flagship go/no-go**: market + composite rug score + liquidity-drain trend → `clear/caution/avoid` + reasons. EVM + Solana |
+| `GET /alpha/launches?chain=` | $0.08 | **Launch radar** — discovers what just launched AND rug-screens every candidate in one call, ranked safest-first with a per-token verdict. Replaces the whole discover→screen→rank pipeline. EVM + Solana |
+| `GET /vet?chain=&address=` | $0.05 | **Single-token go/no-go**: market + composite rug score + liquidity-drain trend → `clear/caution/avoid` + reasons. EVM + Solana |
 | `GET /onchain/safety?chain=&address=` | $0.03 | Composite rug score: red/green flags, 0-100 risk, live-sim results, `needs_review` disagreement flag |
 | `GET /screen?chain=&addresses=a,b,c` | $0.03 | Batch-vet up to 8 tokens, sorted safest-first + summary |
 | `GET /onchain/liquidity?chain=&address=` | $0.01 | Liquidity-drain verdict from our self-collected reserve series: `draining_fast/draining/stable/growing` |

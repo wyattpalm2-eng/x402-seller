@@ -18,7 +18,9 @@ const IS_MAINNET = NETWORK === "eip155:8453";
 const NAME = "x402-seller";
 const DESCRIPTION =
   "Rug protection and decision-ready intelligence for autonomous trading agents. Keyless by design: " +
-  "no signup, no API key — pay a cent per request in USDC (x402). The flagship /vet gives a token go/no-go " +
+  "no signup, no API key — pay a cent per request in USDC (x402). The /alpha/launches LAUNCH RADAR " +
+  "discovers what just launched AND rug-screens every candidate in one call, ranked safest-first — the " +
+  "proactive 'give me safe alpha' call. /vet gives a single-token go/no-go " +
   "in ONE call by fusing a COMPOSITE rug score (GoPlus static analysis + a LIVE Honeypot.is buy/sell " +
   "simulation + serial-rugger check) with our SELF-COLLECTED liquidity-drain trend — a rug-in-progress " +
   "signal that exists nowhere for free because it requires collecting reserves over time. One call is " +
@@ -49,6 +51,7 @@ const P = {
   vet: process.env.PRICE_VET || "$0.05",
   brief: process.env.PRICE_BRIEF || "$0.03",
   screen: process.env.PRICE_SCREEN || "$0.03",
+  alpha: process.env.PRICE_ALPHA || "$0.08",
 };
 
 interface Endpoint {
@@ -61,6 +64,19 @@ interface Endpoint {
 }
 
 const ENDPOINTS: Endpoint[] = [
+  {
+    method: "GET", path: "/alpha/launches", price: P.alpha,
+    description: "LAUNCH RADAR — one call discovers what just launched AND rug-screens every candidate through the composite score (static + live buy/sell simulation, or the Solana dual-engine) + liquidity, returning a ranked safest-first shortlist with a per-token verdict. Replaces an agent's whole discover→screen→rank pipeline (10+ calls). The proactive 'give me safe alpha' call for launch-sniping agents.",
+    input: { chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "solana", "bsc", "polygon", "arbitrum", "optimism"] } },
+    output_example: {
+      chain: "base", headline: "2 of 10 fresh launches look clear — safest: BONKFI",
+      summary: { scanned: 10, clear: 2, caution: 3, avoid: 4, unrated: 1 },
+      launches: [
+        { token: "BONKFI", address: "0x…", verdict: "ok", risk_score: 10, honeypot: false, top_flag: null, liquidity_usd: 82000, liquidity_trend: "growing", launched: "2026-07-19T12:40:00Z" },
+        { token: "SCAMZ", address: "0x…", verdict: "danger", risk_score: 100, honeypot: true, top_flag: "HONEYPOT: live sell simulation FAILED", liquidity_usd: 5400 },
+      ],
+    },
+  },
   {
     method: "GET", path: "/price", price: P.price,
     description: "Spot crypto price in USD.",

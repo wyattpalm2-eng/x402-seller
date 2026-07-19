@@ -24,6 +24,7 @@ import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./der
 import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./screen.js";
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief, vetToken } from "./composites.js";
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
+import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { discoveryRouter } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
@@ -77,6 +78,7 @@ const CATALOG = [
   ...derivsCatalog,
   ...screenCatalog,
   ...compositesCatalog,
+  ...alphaCatalog,
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
@@ -105,6 +107,7 @@ const routes = {
   ...derivsRoutes,
   ...screenRoutes,
   ...compositesRoutes,
+  ...alphaRoutes,
 };
 
 // Exact paths that are behind the paywall — used by the funnel to tell a paid
@@ -291,6 +294,7 @@ app.use((req, res, next) => {
   else if (req.path === "/screen") err = validateScreen(q);
   else if (req.path === "/vet") err = validateVet(q);
   else if (req.path === "/brief") err = validateBrief(q);
+  else if (req.path === "/alpha/launches") err = validateAlpha(q);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
 });
@@ -310,6 +314,7 @@ app.use(cryptoRouter);
 app.use(derivsRouter);
 app.use(screenRouter);
 app.use(compositesRouter);
+app.use(alphaRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
 app.get("/price", (req, res) => {
