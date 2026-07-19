@@ -19,7 +19,7 @@ import { cryptoRouter, cryptoRoutes, cryptoCatalog, validateOnchain } from "./cr
 import { safetyRouter, safetyRoutes, safetyCatalog, validateSafety } from "./safety.js";
 import { derivsRouter, derivsRoutes, derivsCatalog, validateDerivs } from "./derivs.js";
 import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./screen.js";
-import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief } from "./composites.js";
+import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief, vetToken } from "./composites.js";
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
 import { startRecord, trackRecordSummary } from "./record.js";
 import { discoveryRouter } from "./discovery.js";
@@ -185,6 +185,48 @@ app.get("/funnel", freeRateLimit, (req, res) => {
 // FREE public self-graded track record — the proof a skeptical agent needs
 // before paying: our scorer graded against real outcomes, misses included.
 app.get("/track-record", freeRateLimit, (_req, res) => res.json(trackRecordSummary()));
+
+// FREE live demo: ONE real /vet per IP per hour (global daily cap). Agents
+// integrate what they can test end-to-end without money — the paid calls come
+// after it's wired in. The demo runs the exact paid code path, no watered-down
+// output; the limiter (not a paywall) is the only difference.
+const _demoLast = new Map<string, number>();
+let _demoDay = "";
+let _demoCount = 0;
+const DEMO_PER_IP_MS = 60 * 60 * 1000;
+const DEMO_DAILY_CAP = 200;
+app.get("/demo/vet", freeRateLimit, async (req, res) => {
+  const q = req.query as Record<string, any>;
+  const err = validateVet(q);
+  if (err) return void res.status(400).json({ error: "bad_request", detail: err });
+  if (q.address === undefined)
+    return void res.status(400).json({ error: "bad_request", detail: "usage: /demo/vet?chain=base&address=0x… (or chain=solana&address=<mint>)" });
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== _demoDay) { _demoDay = today; _demoCount = 0; _demoLast.clear(); }
+  const ip = req.ip || "unknown";
+  const last = _demoLast.get(ip) ?? 0;
+  if (Date.now() - last < DEMO_PER_IP_MS)
+    return void res.status(429).json({
+      error: "demo_limit",
+      detail: "1 free demo vet per hour per caller. The paid endpoint has no limits.",
+      paid_endpoint: "/vet", price: process.env.PRICE_VET || "$0.05",
+      retry_after_s: Math.ceil((DEMO_PER_IP_MS - (Date.now() - last)) / 1000),
+    });
+  if (_demoCount >= DEMO_DAILY_CAP)
+    return void res.status(429).json({ error: "demo_limit", detail: "daily demo budget exhausted — the paid endpoint /vet is always available" });
+  _demoLast.set(ip, Date.now());
+  _demoCount++;
+  try {
+    const data = await vetToken(String(q.chain ?? "base").toLowerCase().trim(), String(q.address));
+    if (data == null) return void res.status(404).json({ error: "not_found", detail: "no data for that token" });
+    res.json({
+      ...data,
+      demo: { note: "free demo — identical output to the paid /vet, limited to 1/hour", unlimited: "/vet via x402", price: process.env.PRICE_VET || "$0.05" },
+    });
+  } catch {
+    res.status(502).json({ error: "upstream_unavailable" });
+  }
+});
 app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
 
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
@@ -282,6 +324,21 @@ function landingPage(): string {
   const rows = CATALOG.map(
     (e) => `<tr><td><code>${e.route}${e.params}</code></td><td>${e.price}</td><td>${e.desc}</td></tr>`,
   ).join("");
+  // Live proof block: real self-graded track record, rendered server-side.
+  const tr = trackRecordSummary();
+  const s = tr.stats;
+  const catches = tr.recent_graded
+    .filter((r: any) => (r.our_verdict === "danger" || r.our_verdict === "warning") && r.outcome === "rugged")
+    .slice(0, 5)
+    .map((r: any) => `<li><code>${r.token ?? r.address.slice(0, 10)}</code> — flagged <b>${r.our_verdict}</b> (risk ${r.risk_score}), then rugged: ${r.liquidity_remaining_pct ?? "?"}% of liquidity left after ${r.graded_after_h}h</li>`)
+    .join("");
+  const proof =
+    s.graded > 0
+      ? `<p><b>Live track record</b> (self-graded, misses included — <a href="/track-record">full data</a>):
+         ${s.rugs_we_flagged}/${s.rugs_observed} rugs flagged before they happened · ${s.rugs_we_missed} missed ·
+         ${s.false_alarms} false alarms · ${s.graded} calls graded.</p>${catches ? `<ul>${catches}</ul>` : ""}`
+      : `<p><b>Live track record</b>: grading in progress — every 30min we score fresh Base launches with the exact
+         paid scorer and grade ourselves 6h later. <a href="/track-record">Watch it build</a> (${s.calls_recorded} calls recorded, ${s.pending} pending grade).</p>`;
   return `<!doctype html><meta charset="utf-8"><title>x402-seller</title>
 <style>
   body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:720px;margin:48px auto;padding:0 20px;color:#111}
@@ -291,9 +348,12 @@ function landingPage(): string {
   .k{color:#666} .pay{word-break:break-all}
 </style>
 <h1>x402-seller</h1>
-<p class="sub">Decision-ready market intelligence for autonomous agents. No signup, no API key —
-you can't fill a form, but you can pay a cent. Verdict-first JSON, one call per decision.
-Agents: fetch <code>/llms.txt</code> or <code>/.well-known/x402.json</code> and go.</p>
+<p class="sub">Rug protection + decision-ready intelligence for autonomous trading agents. No signup,
+no API key — pay per call in USDC (x402). Composite rug scores (static + live buy/sell simulation),
+a self-collected liquidity-drain detector, EVM + Solana. Verdict-first JSON, one call per decision.
+Agents: fetch <code>/llms.txt</code> or <code>/.well-known/x402.json</code> and go.
+<b>Try it free right now:</b> <code>GET /demo/vet?chain=base&address=0x…</code> (1/hour, full paid output).</p>
+${proof}
 <table><tr><th>Endpoint</th><th>Price</th><th>Returns</th></tr>${rows}</table>
 <p><span class="k">Network:</span> ${NET_LABEL}<br>
 <span class="k">Pay to:</span> <span class="pay">${PAY_TO}</span><br>

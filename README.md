@@ -1,153 +1,138 @@
-# x402-seller
+# x402-seller — rug protection for autonomous trading agents
 
-A paywalled market-data API that charges AI agents **USDC per request** via the
-[x402 protocol](https://docs.cdp.coinbase.com/x402/welcome). This puts you on the
-**seller** side of the agent economy (the scarce side: roughly 9 buyer agents for
-every 1 seller as of early 2026).
+**Live:** https://x402-seller-m8nx.onrender.com · Base mainnet · no signup, no API key — pay per call in USDC via [x402](https://github.com/coinbase/x402)
 
-It runs **today on Base Sepolia testnet with zero money and zero API keys**.
-Going live is a one-line network change.
+Your agent is about to ape into a token. One bad ape costs its whole position.
+This API answers **"is this a rug?"** in one call, with evidence:
 
----
+- **Composite rug score** — [GoPlus](https://gopluslabs.io) static analysis **fused with a live
+  [Honeypot.is](https://honeypot.is) buy/sell simulation** (it actually executes a simulated trade),
+  a serial-rugger check, hard honeypot gates, and a `needs_review` flag when the two engines disagree.
+- **Solana too** — dual-engine (GoPlus-Solana + [RugCheck](https://rugcheck.xyz)): mint/freeze
+  authorities, holder concentration, LP burn. Different chain, different rug physics, same design.
+- **Liquidity-drain detector** — we poll pool reserves over time and answer *"is liquidity leaving
+  right now?"* — the earliest sign of a rug in progress. **This time-series exists nowhere for free**;
+  you can't backfill history you didn't collect.
+- **[Public self-graded track record](https://x402-seller-m8nx.onrender.com/track-record)** — every 30
+  minutes we score fresh Base launches with the exact paid scorer, then grade ourselves against what
+  actually happened. Hits **and misses** published. Evidence, not claims.
 
-## What it does
-
-**Market data**
-
-| Route | Price | Returns | Source |
-|---|---|---|---|
-| `GET /price?symbol=BTC` | $0.001 | spot crypto price | Coinbase (free) |
-| `GET /stock?ticker=AAPL` | $0.002 | stock/ETF quote | Yahoo Finance (free) |
-| `GET /markets?limit=10` | $0.005 | top crypto snapshot | CoinGecko (free) |
-| `GET /signal?symbol=BTC` | $0.01 | composite momentum verdict | blended |
-
-**On-chain / DeFi suite (the moat)** — data agents can't trivially assemble themselves:
-
-| Route | Price | Returns | Source |
-|---|---|---|---|
-| `GET /onchain/token?query=PEPE` | $0.005 | token price, liquidity, volume, 24h change, FDV, best pool | DexScreener (free) |
-| `GET /onchain/trending?chain=base` | $0.005 | trending DEX pools | GeckoTerminal (free) |
-| `GET /onchain/new?chain=base` | $0.01 | newly launched pools (launch hunting) | GeckoTerminal (free) |
-| `GET /onchain/defi?chain=base` | $0.005 | chain TVL + top protocols | DeFiLlama (free) |
-| `GET /onchain/safety?chain=base&address=0x…` | $0.01 | rug/honeypot report: red flags, risk score, verdict | GoPlus (free) |
-| `GET /derivs?symbol=BTC` | $0.01 | perp funding + open interest + crowded-positioning signal | Hyperliquid (free) |
-
-Chains: `base, eth, solana, bsc, polygon, arbitrum, optimism`. Token lookups accept
-`?query=` (symbol/name) or `?chain=&address=` (contract).
-
-**Free routes:** `GET /` `GET /health` `GET /catalog` `GET /stats` (live revenue/usage),
-plus bot-discovery manifests `GET /.well-known/x402.json` and `GET /.well-known/agent.json`.
-
-Hit a paid route with no payment and you get `HTTP 402` + instructions telling the
-caller exactly how much USDC to pay, in what token, to which address. An
-x402-capable client pays automatically and retries. The USDC lands in your wallet.
-Malformed on-chain requests get a `400` **before** the paywall, so a bot never pays
-for a doomed call.
-
----
-
-## Quick start
+## Try it free, right now
 
 ```bash
-npm install
-npm start
+# one real /vet per hour, full paid output (chain=base|eth|bsc|polygon|arbitrum|optimism|solana)
+curl "https://x402-seller-m8nx.onrender.com/demo/vet?chain=eth&address=0x6982508145454Ce325dDbE47a25d4ec3d2311933"
+
+# the receipts: our verdicts graded against real outcomes (free)
+curl "https://x402-seller-m8nx.onrender.com/track-record"
+
+# sample output for every endpoint (free)
+curl "https://x402-seller-m8nx.onrender.com/examples"
 ```
 
-Then, in another terminal, watch the paywall fire:
+## Buy with three lines (any x402 client)
+
+```ts
+import { wrapFetchWithPayment } from "@x402/fetch";
+import { privateKeyToAccount } from "viem/accounts";
+
+const payFetch = wrapFetchWithPayment(fetch, privateKeyToAccount(process.env.PK));
+const r = await payFetch("https://x402-seller-m8nx.onrender.com/vet?chain=base&address=0x…");
+// 402 → auto-pay USDC on Base → data. That's the whole integration.
+```
+
+## Endpoints
+
+| Route | Price | What you get |
+|---|---|---|
+| `GET /vet?chain=&address=` | $0.05 | **Flagship go/no-go**: market + composite rug score + liquidity-drain trend → `clear/caution/avoid` + reasons. EVM + Solana |
+| `GET /onchain/safety?chain=&address=` | $0.03 | Composite rug score: red/green flags, 0-100 risk, live-sim results, `needs_review` disagreement flag |
+| `GET /screen?chain=&addresses=a,b,c` | $0.03 | Batch-vet up to 8 tokens, sorted safest-first + summary |
+| `GET /onchain/liquidity?chain=&address=` | $0.01 | Liquidity-drain verdict from our self-collected reserve series: `draining_fast/draining/stable/growing` |
+| `GET /brief?symbol=BTC` | $0.03 | Market regime in one call: spot + funding/OI + sentiment → `risk_on/risk_off/neutral` |
+| `GET /derivs?symbol=BTC` | $0.01 | Perp funding (hourly + annualized), open interest, crowded-positioning signal |
+| `GET /onchain/token` `/trending` `/new` `/defi` | $0.005–0.01 | Token snapshots, trending pools, fresh launches, chain TVL |
+| `GET /price` `/stock` `/markets` `/signal` | $0.001–0.01 | Spot crypto, stocks/ETFs, market snapshot, momentum verdict |
+
+**Free:** `/` · `/demo/vet` · `/track-record` · `/examples` · `/catalog` · `/llms.txt` ·
+`/.well-known/x402.json` · `/.well-known/agent.json` · `/openapi.json` · `/health` · `/stats`
+
+Verdict-first flat JSON everywhere: read field 1, act. Reasons included for audit. Malformed
+requests are rejected **before** the paywall — your agent never pays for a doomed call.
+
+## Why pay when the underlying sources are free?
+
+Honest answer: the *snapshots* are free — the **judgment and the history are not**.
+
+1. The liquidity time-series is self-collected. There is no free API for "liquidity 1 hour ago."
+2. The composite catches what single sources miss: static-only scanners miss simulated sell-traps;
+   simulation-only misses authority/mint risks. Disagreement between engines is itself signal (`needs_review`).
+3. One $0.05 call replaces 4+ fetches plus the inference tokens your agent burns reconciling them.
+4. It's keyless. Your agent can't fill signup forms — it *can* pay 5 cents.
+5. [The track record is public](https://x402-seller-m8nx.onrender.com/track-record), misses included.
+   Judge the scorer by its record, not this README.
+
+## Use as an MCP tool (Claude Code, Cursor, any MCP client)
+
+Rug-checking as an agent tool **that pays for itself**:
 
 ```bash
-curl -i "http://localhost:4021/price?symbol=BTC"     # -> HTTP 402 Payment Required
-curl -s  "http://localhost:4021/catalog"             # free: what's for sale + your pay-to address
+git clone https://github.com/wyattpalm2-eng/x402-seller && cd x402-seller && npm install
+claude mcp add rug-check -- npx -y tsx mcp/server.mts
 ```
 
-The `PAYMENT-REQUIRED` response header is base64 JSON. Decoded, it's the payment
-demand: amount, USDC contract, your `payTo` address, network, deadline.
+Tools: `vet_token` · `rug_check` · `liquidity_trend` · `market_brief` · `track_record` · `catalog`.
 
----
+- **No config:** works immediately — `vet_token` routes through the free demo (1 real call/hour),
+  `track_record`/`catalog` are always free.
+- **`X402_BUYER_PK=0x…`** (a burner wallet with a few dollars of USDC on Base): every tool goes
+  unlimited, settling ~$0.01–0.05 per call via x402 automatically. No account anywhere.
+- **`X402_SELLER_URL=…`**: point the tools at your own self-hosted instance.
 
-## Your wallet (how you get paid)
-
-- On first run, `npm run wallet` (also done automatically by the server) creates
-  `wallet.json` and uses its address as your receive address.
-- **`wallet.json` holds a private key. Back it up. Whoever has it controls the funds.**
-  It's gitignored.
-- When you have your own wallet, put its address in `.env` as `PAY_TO=` and
-  `wallet.json` is ignored.
-- To receive, you only need the **address**. The private key only matters when you
-  want to move the USDC you've collected.
-
----
-
-## See a full payment (testnet)
+## Run your own
 
 ```bash
-cp .env.example .env
-npm run client          # prints a throwaway buyer address + private key
+npm install && npm start                            # localhost:4021, Base Sepolia by default
+NETWORK=eip155:8453 PAY_TO=0xYourWallet npm start   # mainnet — keyless facilitators, no CDP account needed
 ```
 
-1. Fund that buyer address on **Base Sepolia**:
-   - USDC: https://faucet.circle.com (select Base Sepolia)
-   - a little ETH for gas: any Base Sepolia ETH faucet
-2. Put the printed key in `.env` as `BUYER_PRIVATE_KEY=...`
-3. `npm run client`
+One-click deploy: [`render.yaml`](render.yaml) blueprint. The server registers three redundant
+keyless facilitators (PayAI, xpay, 0xarchive) on mainnet — no facilitator account required.
 
-You'll see: `HTTP 402` → pay → `HTTP 200` + the data + the on-chain settlement,
-and the USDC moves from the buyer wallet to your seller wallet.
+Prove the full payment loop end-to-end (needs a burner wallet with ~$1 USDC on Base):
 
----
-
-## Going live (real money)
-
-Edit `.env`:
-
-```ini
-NETWORK=eip155:8453                                   # Base mainnet
-FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
-PAY_TO=0xYourRealWalletAddress
+```bash
+BUYER_PK=0x<burner-key> npx tsx scripts/selfbuy.mts
 ```
 
-Mainnet settlement uses Coinbase's facilitator, which needs **CDP API keys**
-(free to create at https://portal.cdp.coinbase.com). Add them per the
-[CDP x402 docs](https://docs.cdp.coinbase.com/x402/quickstart-for-sellers).
-Everything else stays the same.
+## Architecture notes
 
----
-
-## Getting customers (discovery — the part that actually decides income)
-
-The code is the easy 10%. Whether you make a dollar comes down to **selling data
-agents want** and **being findable**. Two levers:
-
-1. **List your endpoints where agents look.** Register on the discovery
-   directories so buyer agents can find and call you automatically:
-   - x402scan Bazaar: https://www.x402scan.com
-   - Coinbase Agent.market (x402 app store)
-   Your `GET /catalog` route already emits a machine-readable listing to make this easy.
-
-2. **Sell something not free.** These default endpoints wrap free data, so they're
-   a demo, not a moat. Swap in data agents can't trivially get: your StockFit
-   fundamentals, your calibrated weather/station model, private scrapes, enriched
-   or blended signals. Price by value, not by cost. That's where real demand lives.
-
-Be realistic: this market is early and small. The honest play is to list a few
-genuinely useful endpoints, watch `payTo` for inbound USDC, and double down on
-whatever gets called.
-
----
+- Node/TS + Express + `@x402/express`. Three redundant facilitators registered in one
+  `x402ResourceServer` — any one advertising Base-mainnet `exact` keeps settlement alive.
+- Stale-while-revalidate cache with in-flight dedup in front of every upstream: a paying buyer
+  never blocks on a cold upstream or eats a 502 while a recent value exists.
+- SSRF-safe: chain allowlists, strict address regexes, `encodeURIComponent` everywhere, upstream
+  errors never echoed to clients. Receive-only — the server holds **no private key**.
+- Junk never billed: sources throw on non-finite prices/empty payloads → uncharged 502; malformed
+  input 400s before the paywall.
+- `/track-record` and `/onchain/liquidity` ledgers are in-memory + JSONL on free-tier ephemeral
+  disk: depth compounds while the service runs and resets on redeploy. Documented, not hidden.
 
 ## Layout
 
 ```
 src/
-  index.ts    server: routes, paywall wiring, storefront
-  data.ts     the product: the data each endpoint returns (swap this out)
-  wallet.ts   generates/loads your receive wallet
-  client.ts   test buyer that pays and fetches (the demo)
+  index.ts       server: paywall wiring, free routes, demo, storefront
+  safety.ts      EVM composite rug score (GoPlus × Honeypot.is + agreement factor)
+  solsafety.ts   Solana composite (GoPlus-Solana × RugCheck)
+  history.ts     liquidity time-series poller + drain detector
+  record.ts      the self-graded public track record
+  composites.ts  /vet and /brief answer endpoints
+  crypto.ts      on-chain aggregator (DexScreener/GeckoTerminal/DeFiLlama)
+  funnel.ts      who viewed (402) vs who bought — demand telemetry
+scripts/
+  selfbuy.mts    one-command real x402 purchase (settlement proof)
 ```
 
-## Known limitations (v0.1)
-
-- **Paid-but-failed:** payment settles before the handler runs, so if an upstream
-  source is down the buyer paid and got a 502. For production, check availability
-  before settling or issue a refund.
-- Testnet by default. No rate limiting, no caching, no persistence.
+MIT. Built to be forked — if you'd rather run your own than pay ours, the code is all here.
+The moat isn't the code, it's the collected history and the graded record.
