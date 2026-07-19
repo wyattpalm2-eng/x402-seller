@@ -123,6 +123,27 @@ app.use((_req, res, next) => {
   next();
 });
 
+// x402 v2 DISCOVERY FIX: @x402/express puts the payment JSON only in the base64
+// PAYMENT-REQUIRED header and sends `{}` as the 402 body. But every probe-based
+// directory (PayAI catalog, 402index, x402-list, x402scan auto-add, CDP Bazaar)
+// parses the x402 v2 JSON *body* (x402Version, accepts[], resource) — an empty
+// body makes us invisible to all of them. Mirror the header into the body.
+app.use((_req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = ((body?: any) => {
+    if (res.statusCode === 402 && (body == null || (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0))) {
+      const hdr = res.getHeader("payment-required");
+      if (typeof hdr === "string") {
+        try {
+          return origJson(JSON.parse(Buffer.from(hdr, "base64").toString("utf8")));
+        } catch { /* malformed header — fall through to the original body */ }
+      }
+    }
+    return origJson(body);
+  }) as typeof res.json;
+  next();
+});
+
 // Demand funnel: after each response finishes, a 402 on any route = a paywall
 // challenge nobody paid (a window-shopper → recordView); a 200 on a PAID path =
 // a real buy (markBuyer, so that IP drops off the shopper list). Read-only,
