@@ -105,8 +105,11 @@ const ENDPOINTS: Endpoint[] = [
     method: "GET", path: "/onchain/token", price: P.token,
     description: "On-chain token snapshot: price, liquidity, 24h volume, multi-window price change, FDV, best pool. Query by symbol/name or by contract address.",
     input: {
-      query: { type: "string", required: false, example: "PEPE" },
-      address: { type: "string", required: false, example: "0x6982508145454ce325 ...", },
+      // query is marked required so directory crawlers (x402scan) probe with a real
+      // value and get the 402 challenge; the server still also accepts address-only
+      // calls (see validateOnchain) — the description documents both paths.
+      query: { type: "string", required: true, example: "PEPE" },
+      address: { type: "string", required: false, example: "0x6982508145454Ce325dDbE47a25d4ec3d2311933" },
       chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "solana", "bsc", "polygon", "arbitrum", "optimism"] },
     },
     output_example: {
@@ -250,6 +253,9 @@ function buildOpenApi(base: string) {
       title: NAME,
       version: "0.4.0",
       description: DESCRIPTION,
+      // Presence of contact.email in the openapi.json served at our own domain is
+      // how x402scan verifies listing ownership (only the operator controls this).
+      contact: { name: NAME, email: "wyattpalm2+x402@gmail.com", url: "https://github.com/wyattpalm2-eng/x402-seller" },
       "x-guidance":
         "Keyless x402 API. GET any path with no payment for the 402 challenge, pay the quoted USDC amount " +
         `on ${IS_MAINNET ? "Base mainnet" : "Base Sepolia"}, retry with X-PAYMENT. Prefer /vet and /brief for ` +
