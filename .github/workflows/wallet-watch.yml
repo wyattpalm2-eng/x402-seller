@@ -1,8 +1,7 @@
 name: wallet-watch
 # Emails Wyatt (by opening a GitHub issue) the FIRST time real USDC lands in the
-# x402-seller wallet on Base. Only fires once (drops a .paid marker). Also nudges
-# /health warm each run. Free on this public repo. An ~hourly check is plenty for
-# a "you made your first sale" alert.
+# x402-seller wallet on Base. Fires once (drops a .paid marker). Also warms /health
+# each run. Free on this public repo. ~hourly is plenty for a first-sale alert.
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -19,21 +18,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Check wallet for first USDC payment
+      - name: Check wallet for first USDC payment (and warm the API)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           A=0x72B944dA66263bE35c2a2eDFeF5c525d58fa53Df
-          USDC=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913   # USDC on Base
-          # warm the API opportunistically while we're here
+          USDC=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
           curl -s -o /dev/null --max-time 25 "https://x402-seller-m8nx.onrender.com/health" || true
-          COUNT=$(curl -s --max-time 30 "https://base.blockscout.com/api/v2/addresses/$A/token-transfers?type=ERC-20&filter=to" \
-            | python3 -c "
-import json,sys
-usdc='$USDC'.lower()
-d=json.load(sys.stdin)
-print(sum(1 for t in d.get('items',[]) if ((t.get('token') or {}).get('address') or '').lower()==usdc))
-" 2>/dev/null || echo 0)
+          COUNT=$(curl -s --max-time 30 "https://base.blockscout.com/api/v2/addresses/$A/token-transfers?type=ERC-20&filter=to" | jq --arg u "$USDC" '[.items[]? | select(((.token.address // "") | ascii_downcase) == $u)] | length' 2>/dev/null || echo 0)
           echo "real USDC payments received so far: ${COUNT:-0}"
           if [ "${COUNT:-0}" -gt 0 ] && [ ! -f .paid ]; then
             echo "FIRST PAYMENT DETECTED"
@@ -41,8 +33,5 @@ print(sum(1 for t in d.get('items',[]) if ((t.get('token') or {}).get('address')
             git config user.name "wallet-watch"
             git config user.email "actions@users.noreply.github.com"
             git add .paid && git commit -m "first x402 payment detected" && git push
-            gh issue create \
-              --title "First x402-seller payment landed" \
-              --body "@wyattpalm2-eng an AI agent just paid you in USDC on Base. Wallet: https://base.blockscout.com/address/$A — this is your first real x402 sale. 🎉" \
-              || true
+            gh issue create --title "First x402-seller payment landed" --body "@wyattpalm2-eng an AI agent just paid you in USDC on Base. Wallet: https://base.blockscout.com/address/$A — this is your first real x402 sale. 🎉" || true
           fi
