@@ -163,6 +163,23 @@ async function gatherInputs(symbol: string): Promise<SignalInputs> {
   };
 }
 
+/**
+ * The EXACT signal compute, exported so the Truth Engine grades the same code
+ * path buyers pay for (doctrine: every endpoint grades itself — no shadow
+ * implementation that could quietly diverge from the paid one).
+ */
+export async function signalVerdict(symbol: string): Promise<{
+  symbol: string;
+  price_usd: number;
+  momentum: number;
+  verdict: "bullish" | "bearish" | "neutral";
+} | null> {
+  const inputs = await gatherInputs(symbol);
+  if (!Number.isFinite(inputs.price_usd)) return null;
+  const { momentum } = momentumScore(inputs.change_24h_pct, inputs.price_usd, inputs.low_24h, inputs.high_24h);
+  return { symbol: inputs.base, price_usd: inputs.price_usd, momentum, verdict: verdictFor(momentum) };
+}
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 export const premiumRouter: Router = Router();

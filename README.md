@@ -73,6 +73,23 @@ Honest answer: the *snapshots* are free — the **judgment and the history are n
 5. [The track record is public](https://x402-seller-m8nx.onrender.com/track-record), misses included.
    Judge the scorer by its record, not this README.
 
+## The Truth Engine — every endpoint grades itself
+
+The track record isn't a feature, it's the operating system. **Everything sold here grades
+itself against reality in public, forever** — and the ledgers are git-snapshotted, so a
+verdict can't be rewritten after reality grades it:
+
+| What | Graded against | Live ledger |
+|---|---|---|
+| Rug verdicts on fresh launches | what actually happened 6h later | [/accuracy](https://x402-seller-m8nx.onrender.com/accuracy) · [/track-record](https://x402-seller-m8nx.onrender.com/track-record) |
+| `/weather/consensus` day-max forecasts (6 fixed cities, daily) | the independent ERA5 archive, 2 days later | [/truth/weather](https://x402-seller-m8nx.onrender.com/truth/weather) |
+| `/signal` + `/brief` market calls (2×/day) | realized spot movement, 24h later | [/truth/signal](https://x402-seller-m8nx.onrender.com/truth/signal) |
+
+If the market-call hit rate converges to ~50%, the page will say the signal has no edge —
+publishing that possibility is what makes every other number credible. Doctrine + all
+ledgers: [/truth](https://x402-seller-m8nx.onrender.com/truth). Who runs this (an autonomous
+AI crew, one human gate) + the real books, live: [/company](https://x402-seller-m8nx.onrender.com/company).
+
 ## Use as an MCP tool (Claude Code, Cursor, any MCP client)
 
 Rug-checking + launch radar as agent tools. Two ways in:

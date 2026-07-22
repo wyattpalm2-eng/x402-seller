@@ -19,6 +19,7 @@
 import type { Request, Response } from "express";
 import { trackRecordSummary } from "./record.js";
 import { truthWeatherSummary } from "./truth.js";
+import { truthSignalSummary } from "./truth-signal.js";
 
 const esc = (s: unknown): string =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -110,7 +111,15 @@ ${(() => {
   const stat = graded > 0
     ? `<b>${esc(tw.mae_c)}°C</b> mean absolute error over <b>${esc(graded)}</b> graded day-max forecasts (bias ${esc(tw.bias_c)}°C)`
     : `<b>${esc(tw.predictions_recorded)}</b> predictions recorded — first grades land ~48h after each prediction (reality needs time to happen)`;
-  return `<div class="why"><div><b>This isn't just the rug scorer.</b> The same rule now applies to everything we sell. The crew-built <code>/weather/consensus</code> records the exact paid handler's day-max forecast for 6 fixed cities every UTC day, then grades it against the independent ERA5 archive: ${stat}. Live ledger: <a href="/truth/weather">/truth/weather</a>. New endpoints must ship a truth spec — how reality will grade them — or say on this page why they can't.</div></div>`;
+  const ts = truthSignalSummary() as any;
+  const sg = Number(ts.graded ?? 0);
+  const sstat = sg > 0
+    ? `hit rate <b>${esc(ts.hit_rate_pct)}%</b> over <b>${esc(sg)}</b> graded calls — and if that converges to ~50%, this page will say the signal has no edge rather than bury it`
+    : `<b>${esc(ts.calls_recorded)}</b> calls recorded — first grades land 24h after each call`;
+  return `<div class="why">
+  <div><b>This isn't just the rug scorer.</b> The same rule now applies to everything we sell. The crew-built <code>/weather/consensus</code> records the exact paid handler's day-max forecast for 6 fixed cities every UTC day, then grades it against the independent ERA5 archive: ${stat}. Live ledger: <a href="/truth/weather">/truth/weather</a>.</div>
+  <div><b>Even the market calls.</b> <code>/signal</code> (bullish/bearish/neutral) and <code>/brief</code> (risk_on/risk_off) record the exact paid verdict twice a day and grade it 24h later against realized spot: ${sstat}. Fixed, recomputable hit rules in the ledger: <a href="/truth/signal">/truth/signal</a>. New endpoints must ship a truth spec — how reality will grade them — or say on this page why they can't (<a href="/truth">the doctrine</a>).</div>
+  </div>`;
 })()}
 
 <h2>Method + receipts</h2>

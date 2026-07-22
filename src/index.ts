@@ -30,6 +30,7 @@ import weatherHandler from "./ported/weather-consensus.handler.cjs";
 import { accuracyPage } from "./accuracy.js";
 import { demandReport, bumpDemo } from "./demand.js";
 import { startTruth, truthWeatherSummary, truthWeatherRaw } from "./truth.js";
+import { startTruthSignal, truthSignalSummary, truthSignalRaw } from "./truth-signal.js";
 import { companyPage } from "./company.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
@@ -291,8 +292,22 @@ app.get("/company", freeRateLimit, companyPage(CATALOG.length));
 // after /funnel gets FUNNEL_KEY-locked.
 app.get("/demand", freeRateLimit, (_req, res) => res.json(demandReport()));
 // THE TRUTH ENGINE: every endpoint grades itself against reality in public.
+app.get("/truth", freeRateLimit, (_req, res) =>
+  res.json({
+    doctrine:
+      "Every endpoint we sell grades itself against reality in public, forever. The Proving Ground proves an endpoint works once; the Truth Engine proves it stays right. Endpoints that can't be graded must say so.",
+    ledgers: {
+      rug_scorer: { summary: "/track-record", raw: "/track-record/raw", human: "/accuracy" },
+      weather: { summary: "/truth/weather", raw: "/truth/weather/raw" },
+      market_calls: { summary: "/truth/signal", raw: "/truth/signal/raw" },
+    },
+    tamper_evidence: "all three ledgers are git-snapshotted on a schedule — a verdict can't be rewritten after reality grades it",
+    for_new_endpoints: "every ship bundle declares a TRUTH spec (how reality will grade it) or gradeable:false with a reason",
+  }));
 app.get("/truth/weather", freeRateLimit, (_req, res) => res.json(truthWeatherSummary()));
 app.get("/truth/weather/raw", freeRateLimit, (_req, res) => res.json({ rows: truthWeatherRaw() }));
+app.get("/truth/signal", freeRateLimit, (_req, res) => res.json(truthSignalSummary()));
+app.get("/truth/signal/raw", freeRateLimit, (_req, res) => res.json({ rows: truthSignalRaw() }));
 // Crawler hints: everything public, and point agents at the machine docs.
 app.get("/robots.txt", freeRateLimit, (_req, res) =>
   res.type("text/plain").send("User-agent: *\nAllow: /\n\n# agent-readable docs\n# /llms.txt  /catalog  /openapi.json  /.well-known/x402.json  /accuracy\n"));
@@ -485,6 +500,7 @@ app.listen(PORT, () => {
   startHistory(); // begin collecting the liquidity time-series (the /onchain/liquidity moat)
   startRecord(); // begin the self-graded track record (/track-record — the public receipts)
   startTruth(); // begin the truth engine (every endpoint grades itself — /truth/weather)
+  startTruthSignal(); // second enrollment: /signal + /brief grade their market calls (/truth/signal)
 });
 
 function landingPage(): string {
@@ -511,6 +527,9 @@ function landingPage(): string {
          ${s.false_alarms} false alarms · ${s.graded} calls graded.</p>${catches ? `<ul>${catches}</ul>` : ""}`
       : `<p><b>Live track record</b>: grading in progress — every 30min we score fresh Base launches with the exact
          paid scorer and grade ourselves 6h later. <a href="/track-record">Watch it build</a> (${s.calls_recorded} calls recorded, ${s.pending} pending grade).</p>`;
+  const truthLinks = `<p><b>The Truth Engine</b> — every endpoint here grades itself against reality, in public:
+    <a href="/accuracy">rug-scorer receipts</a> · <a href="/truth/weather">weather forecasts</a> ·
+    <a href="/truth/signal">market calls</a> · <a href="/company">who runs this (an AI crew) + the real books</a>.</p>`;
   return `<!doctype html><meta charset="utf-8"><title>x402-seller</title>
 <style>
   body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:720px;margin:48px auto;padding:0 20px;color:#111}
@@ -526,6 +545,7 @@ a self-collected liquidity-drain detector, EVM + Solana. Verdict-first JSON, one
 Agents: fetch <code>/llms.txt</code> or <code>/.well-known/x402.json</code> and go.
 <b>Try it free right now:</b> <code>GET /demo/vet?chain=base&address=0x…</code> (1/hour, full paid output).</p>
 ${proof}
+${truthLinks}
 <table><tr><th>Endpoint</th><th>Price</th><th>Returns</th></tr>${rows}</table>
 <p><span class="k">Network:</span> ${NET_LABEL}<br>
 <span class="k">Pay to:</span> <span class="pay">${PAY_TO}</span><br>

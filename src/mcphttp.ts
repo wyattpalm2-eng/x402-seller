@@ -99,6 +99,24 @@ function buildServer(): McpServer {
   );
 
   server.tool(
+    "truth",
+    "FREE, always: the Truth Engine — every endpoint this service sells grades itself against reality in public (rug verdicts vs actual rugs, weather forecasts vs the ERA5 archive, market calls vs realized spot). Returns the doctrine + all three live ledgers' summaries. Judge us by receipts, not claims.",
+    {},
+    async () => {
+      bumpTool("truth");
+      const { truthWeatherSummary } = await import("./truth.js");
+      const { truthSignalSummary } = await import("./truth-signal.js");
+      return ok({
+        doctrine: "Every endpoint grades itself against reality in public, forever. All ledgers are git-snapshotted — a verdict can't be rewritten after reality grades it.",
+        rug_scorer: (trackRecordSummary() as any)?.stats ?? null,
+        weather: truthWeatherSummary(),
+        market_calls: truthSignalSummary(),
+        human_pages: { receipts: `${BASE_URL}/accuracy`, company: `${BASE_URL}/company`, index: `${BASE_URL}/truth` },
+      });
+    },
+  );
+
+  server.tool(
     "track_record",
     "FREE, always: the service's public self-graded track record — its rug verdicts on fresh launches graded against what actually happened, hits AND misses. Judge the scorer by its receipts.",
     {},

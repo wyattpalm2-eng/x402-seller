@@ -24,22 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch live rows and merge into the committed ledger
+      - name: Fetch live rows and merge into the committed ledgers
         run: |
           set -e
-          for i in 1 2 3 4 5 6; do
-            if curl -fsS -m 60 "https://x402-seller-m8nx.onrender.com/truth/weather/raw" -o live.json; then
-              break
-            fi
-            echo "attempt $i failed, waiting 20s"; sleep 20
-          done
-          [ -f live.json ] || { echo "service unreachable — skipping this run"; exit 0; }
-
           mkdir -p data
-          python3 - <<'PY'
+          # ledger pairs: live raw endpoint -> committed file
+          for pair in "truth/weather/raw:data/truth_weather.jsonl" "truth/signal/raw:data/truth_signal.jsonl"; do
+            ep="${pair%%:*}"; path="${pair#*:}"
+            ok=""
+            for i in 1 2 3 4 5 6; do
+              if curl -fsS -m 60 "https://x402-seller-m8nx.onrender.com/${ep}" -o live.json; then ok=1; break; fi
+              echo "attempt $i for ${ep} failed, waiting 20s"; sleep 20
+            done
+            [ -n "$ok" ] || { echo "${ep} unreachable — skipping"; continue; }
+            LEDGER_PATH="$path" python3 - <<'PY'
           import json, os
           rows = {}
-          path = "data/truth_weather.jsonl"
+          path = os.environ["LEDGER_PATH"]
           if os.path.exists(path):
               for line in open(path):
                   line = line.strip()
@@ -57,19 +58,20 @@ jobs:
               # a graded row supersedes its pending self; never regress a grade
               if prev is None or (r.get("graded") and not prev.get("graded")):
                   rows[rid] = r
-          out = sorted(rows.values(), key=lambda r: r.get("t", 0))[-4000:]
+          out = sorted(rows.values(), key=lambda r: r.get("t", 0))[-6000:]
           with open(path, "w") as f:
               for r in out:
                   f.write(json.dumps(r) + "\n")
-          print(f"truth ledger now {len(out)} rows")
+          print(f"{path} now {len(out)} rows")
           PY
-          rm -f live.json
+            rm -f live.json
+          done
 
       - name: Commit if changed
         run: |
           git config user.name "truth-bot"
           git config user.email "actions@github.com"
-          git add data/truth_weather.jsonl
+          git add data/truth_weather.jsonl data/truth_signal.jsonl
           if git diff --cached --quiet; then
             echo "no change"
           else
