@@ -28,7 +28,8 @@ import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.j
 import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather } from "./ported/weather-consensus.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
-import { discoveryRouter } from "./discovery.js";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { discoveryRouter, ENDPOINTS } from "./discovery.js";
 import { recordSale, priceToUsd, stats } from "./stats.js";
 import { recordView, markBuyer, funnel } from "./funnel.js";
 
@@ -113,6 +114,48 @@ const routes = {
   ...alphaRoutes,
   ...weatherRoutes,
 };
+
+// ─── Bazaar discovery extensions ─────────────────────────────────────────
+// Attach a machine-readable discovery declaration (input example + JSON schema +
+// output example) to every paid route, sourced from the SAME ENDPOINTS spec that
+// feeds /.well-known/x402.json. @x402/express detects `extensions.bazaar` on any
+// route (checkIfBazaarNeeded) and auto-registers the bazaar resource-server
+// extension — the facilitator/settlement wiring below is untouched. This payload
+// is what probe-crawled catalogs (PayAI /discovery/resources, CDP Bazaar) ingest,
+// so listing there becomes a code artifact, not a manual submission.
+for (const ep of ENDPOINTS) {
+  const rc = (routes as Record<string, any>)[`GET ${ep.path}`];
+  if (!rc) continue; // spec'd but not mounted (shouldn't happen; harmless if it does)
+  // Example values must MATCH the declared schema types (the extension validator
+  // rejects a string "40.71" against a number field), so coerce numerics.
+  const input: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(ep.input)) {
+    const ex = v.example ?? v.default ?? v.enum?.[0];
+    if (ex === undefined) continue;
+    input[k] = (v.type === "number" || v.type === "integer") && isFinite(Number(ex)) ? Number(ex) : ex;
+  }
+  rc.serviceName = "x402-seller";
+  // NOTE: no `method` here — the declare input type omits it; the bazaar server
+  // extension stamps the route's real method at enrichment time.
+  rc.extensions = declareDiscoveryExtension({
+    ...(Object.keys(input).length ? { input } : {}),
+    inputSchema: {
+      properties: Object.fromEntries(
+        Object.entries(ep.input).map(([k, v]) => {
+          const numeric = v.type === "number" || v.type === "integer";
+          return [k, {
+            type: v.type === "integer" ? "integer" : v.type === "number" ? "number" : "string",
+            ...(v.enum ? { enum: v.enum } : {}),
+            // defaults live as strings in the spec — coerce to the declared type
+            ...(v.default !== undefined ? { default: numeric && isFinite(Number(v.default)) ? Number(v.default) : v.default } : {}),
+          }];
+        }),
+      ),
+      required: Object.entries(ep.input).filter(([, v]) => v.required).map(([k]) => k),
+    },
+    output: { example: ep.output_example },
+  });
+}
 
 // Exact paths that are behind the paywall — used by the funnel to tell a paid
 // 200 (a real buy) apart from a free-route 200.

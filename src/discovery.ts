@@ -55,7 +55,7 @@ const P = {
   weather: process.env.PRICE_WEATHER || "$0.03",
 };
 
-interface Endpoint {
+export interface Endpoint {
   method: "GET";
   path: string;
   price: string;
@@ -64,7 +64,9 @@ interface Endpoint {
   output_example: any;
 }
 
-const ENDPOINTS: Endpoint[] = [
+// Exported so index.ts can derive per-route Bazaar discovery extensions from the
+// SAME spec that feeds /.well-known/x402.json — one source of truth, no drift.
+export const ENDPOINTS: Endpoint[] = [
   {
     method: "GET", path: "/weather/consensus", price: P.weather,
     description: "Cross-source weather consensus: blends Open-Meteo + NOAA/NWS + 7Timer into one temperature plus an agreement score (how much the models agree). Keyless — one call instead of stitching 3 free weather APIs and reconciling them yourself. First endpoint built by the autonomous crew and ported through the bridge.",
