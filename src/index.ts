@@ -25,6 +25,7 @@ import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./scr
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief, vetToken } from "./composites.js";
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
 import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.js";
+import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather } from "./ported/weather-consensus.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { discoveryRouter } from "./discovery.js";
@@ -80,6 +81,7 @@ const CATALOG = [
   ...screenCatalog,
   ...compositesCatalog,
   ...alphaCatalog,
+  ...weatherCatalog,
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
@@ -109,6 +111,7 @@ const routes = {
   ...screenRoutes,
   ...compositesRoutes,
   ...alphaRoutes,
+  ...weatherRoutes,
 };
 
 // Exact paths that are behind the paywall — used by the funnel to tell a paid
@@ -304,6 +307,7 @@ app.use((req, res, next) => {
   else if (req.path === "/vet") err = validateVet(q);
   else if (req.path === "/brief") err = validateBrief(q);
   else if (req.path === "/alpha/launches") err = validateAlpha(q);
+  else if (req.path === "/weather/consensus") err = validateWeather(q);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
 });
@@ -324,6 +328,7 @@ app.use(derivsRouter);
 app.use(screenRouter);
 app.use(compositesRouter);
 app.use(alphaRouter);
+app.use(weatherRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
 app.get("/price", (req, res) => {

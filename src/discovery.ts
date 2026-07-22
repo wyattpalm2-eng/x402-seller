@@ -52,6 +52,7 @@ const P = {
   brief: process.env.PRICE_BRIEF || "$0.03",
   screen: process.env.PRICE_SCREEN || "$0.03",
   alpha: process.env.PRICE_ALPHA || "$0.08",
+  weather: process.env.PRICE_WEATHER || "$0.03",
 };
 
 interface Endpoint {
@@ -64,6 +65,12 @@ interface Endpoint {
 }
 
 const ENDPOINTS: Endpoint[] = [
+  {
+    method: "GET", path: "/weather/consensus", price: P.weather,
+    description: "Cross-source weather consensus: blends Open-Meteo + NOAA/NWS + 7Timer into one temperature plus an agreement score (how much the models agree). Keyless — one call instead of stitching 3 free weather APIs and reconciling them yourself. First endpoint built by the autonomous crew and ported through the bridge.",
+    input: { lat: { type: "number", required: true, example: "40.71" }, lon: { type: "number", required: true, example: "-74.01" } },
+    output_example: { query: { lat: 40.71, lon: -74.01 }, consensus: { blendedTempC: 26, agreementScore: 53, sourceCount: 2, stdevC: 2.35 }, sources: [{ source: "open-meteo", tempC: 23.6 }, { source: "noaa-nws", tempC: 28.3 }, { source: "7timer", error: "timeout" }] },
+  },
   {
     method: "GET", path: "/alpha/launches", price: P.alpha,
     description: "LAUNCH RADAR — one call discovers what just launched AND rug-screens every candidate through the composite score (static + live buy/sell simulation, or the Solana dual-engine) + liquidity, returning a ranked safest-first shortlist with a per-token verdict. Replaces an agent's whole discover→screen→rank pipeline (10+ calls). The proactive 'give me safe alpha' call for launch-sniping agents.",
