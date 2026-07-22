@@ -22,6 +22,7 @@ import { vetToken } from "./composites.js";
 import { launchRadar } from "./alpha.js";
 import { safetyReport } from "./safety.js";
 import { trackRecordSummary } from "./record.js";
+import weatherHandler from "./ported/weather-consensus.handler.cjs";
 
 const CHAINS = ["base", "eth", "bsc", "polygon", "arbitrum", "optimism", "solana"] as const;
 const BASE_URL = (process.env.PUBLIC_BASE_URL || "https://x402-seller-m8nx.onrender.com").replace(/\/+$/, "");
@@ -80,6 +81,17 @@ function buildServer(): McpServer {
   );
 
   server.tool(
+    "weather_consensus",
+    "Cross-source weather consensus for any coordinates: blends Open-Meteo + NOAA/NWS + 7Timer into one temperature with an agreement score (how much independent models agree). Keyless multi-source ground truth in one call — built by the autonomous crew, ported through the bridge. FREE demo (shared daily budget); unlimited via the paid HTTP API ($0.03).",
+    { lat: z.number().min(-90).max(90).describe("latitude"), lon: z.number().min(-180).max(180).describe("longitude") },
+    async ({ lat, lon }) => {
+      if (!demoAllowed()) return overBudget();
+      const data = await weatherHandler({ lat: String(lat), lon: String(lon) }).catch(() => null);
+      return data == null ? ok({ error: "not_found", detail: "no consensus for those coordinates" }) : ok(data);
+    },
+  );
+
+  server.tool(
     "track_record",
     "FREE, always: the service's public self-graded track record — its rug verdicts on fresh launches graded against what actually happened, hits AND misses. Judge the scorer by its receipts.",
     {},
@@ -100,6 +112,7 @@ function buildServer(): McpServer {
           "GET /vet": "$0.05 — one-token go/no-go",
           "GET /onchain/safety": "$0.03 — composite rug score (static + live sim)",
           "GET /onchain/liquidity": "$0.01 — liquidity-drain detector",
+          "GET /weather/consensus": "$0.03 — cross-source weather consensus + agreement score (multi-model ground truth beyond crypto)",
         },
         discovery: { catalog: `${BASE_URL}/catalog`, llms: `${BASE_URL}/llms.txt`, openapi: `${BASE_URL}/openapi.json`, track_record: `${BASE_URL}/track-record` },
         note: "This remote MCP server offers a free daily demo of vet_token / launch_radar / rug_check. For unlimited use, call the paid HTTP API with an x402 client.",
