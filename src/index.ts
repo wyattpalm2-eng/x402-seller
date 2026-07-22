@@ -28,6 +28,9 @@ import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.j
 import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather } from "./ported/weather-consensus.js";
 import weatherHandler from "./ported/weather-consensus.handler.cjs";
 import { accuracyPage } from "./accuracy.js";
+import { demandReport, bumpDemo } from "./demand.js";
+import { startTruth, truthWeatherSummary, truthWeatherRaw } from "./truth.js";
+import { companyPage } from "./company.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
@@ -281,6 +284,15 @@ app.get("/dashboard", freeRateLimit, (req, res) => {
 app.get("/track-record", freeRateLimit, (_req, res) => res.json(trackRecordSummary()));
 // The human-shareable wedge page rendering the same ledger ("we publish our misses").
 app.get("/accuracy", freeRateLimit, accuracyPage);
+// The story asset: who runs this (the autonomous company), with the real books.
+app.get("/company", freeRateLimit, companyPage(CATALOG.length));
+// REAL demand signal, public-safe (no IPs/UAs): what actual callers probe.
+// Also the crew's demand oracle via bridge telemetry — and it keeps working
+// after /funnel gets FUNNEL_KEY-locked.
+app.get("/demand", freeRateLimit, (_req, res) => res.json(demandReport()));
+// THE TRUTH ENGINE: every endpoint grades itself against reality in public.
+app.get("/truth/weather", freeRateLimit, (_req, res) => res.json(truthWeatherSummary()));
+app.get("/truth/weather/raw", freeRateLimit, (_req, res) => res.json({ rows: truthWeatherRaw() }));
 // Crawler hints: everything public, and point agents at the machine docs.
 app.get("/robots.txt", freeRateLimit, (_req, res) =>
   res.type("text/plain").send("User-agent: *\nAllow: /\n\n# agent-readable docs\n# /llms.txt  /catalog  /openapi.json  /.well-known/x402.json  /accuracy\n"));
@@ -322,6 +334,7 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
     // caller out for an hour (that would sabotage demo→paid conversion).
     _demoLast.set(ip, Date.now());
     _demoCount++;
+    bumpDemo("vet"); // real-demand signal → /demand
     res.json({
       ...data,
       demo: { note: "free demo — identical output to the paid /vet, limited to 1/hour", unlimited: "/vet via x402", price: process.env.PRICE_VET || "$0.05" },
@@ -359,6 +372,7 @@ app.get("/demo/weather", freeRateLimit, async (req, res) => {
     // Slot consumed only on success — a 404/502 must not lock the caller out.
     _wDemoLast.set(ip, Date.now());
     _wDemoCount++;
+    bumpDemo("weather"); // real-demand signal → /demand
     res.json({
       ...data,
       demo: { note: "free demo — identical output to the paid /weather/consensus, limited to 1/hour", unlimited: "/weather/consensus via x402", price: process.env.PRICE_WEATHER || "$0.03" },
@@ -470,6 +484,7 @@ app.listen(PORT, () => {
   console.log("  (expect HTTP 402 + payment instructions)\n");
   startHistory(); // begin collecting the liquidity time-series (the /onchain/liquidity moat)
   startRecord(); // begin the self-graded track record (/track-record — the public receipts)
+  startTruth(); // begin the truth engine (every endpoint grades itself — /truth/weather)
 });
 
 function landingPage(): string {

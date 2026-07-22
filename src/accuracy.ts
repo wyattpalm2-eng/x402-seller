@@ -18,6 +18,7 @@
  */
 import type { Request, Response } from "express";
 import { trackRecordSummary } from "./record.js";
+import { truthWeatherSummary } from "./truth.js";
 
 const esc = (s: unknown): string =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -101,6 +102,16 @@ ${misses.length ? `<table>${misses.map(row).join("")}</table>` : `<p class="dim"
 
 <h2>Recent catches — flagged before the rug</h2>
 ${catches.length ? `<table>${catches.map(row).join("")}</table>` : `<p class="dim">No recent flagged rugs in the last 50 graded calls.</p>`}
+
+<h2>The doctrine: every endpoint grades itself</h2>
+${(() => {
+  const tw = truthWeatherSummary() as any;
+  const graded = Number(tw.graded ?? 0);
+  const stat = graded > 0
+    ? `<b>${esc(tw.mae_c)}°C</b> mean absolute error over <b>${esc(graded)}</b> graded day-max forecasts (bias ${esc(tw.bias_c)}°C)`
+    : `<b>${esc(tw.predictions_recorded)}</b> predictions recorded — first grades land ~48h after each prediction (reality needs time to happen)`;
+  return `<div class="why"><div><b>This isn't just the rug scorer.</b> The same rule now applies to everything we sell. The crew-built <code>/weather/consensus</code> records the exact paid handler's day-max forecast for 6 fixed cities every UTC day, then grades it against the independent ERA5 archive: ${stat}. Live ledger: <a href="/truth/weather">/truth/weather</a>. New endpoints must ship a truth spec — how reality will grade them — or say on this page why they can't.</div></div>`;
+})()}
 
 <h2>Method + receipts</h2>
 <p class="sub" style="font-size:14.5px">Grading: <code>rugged</code> = &lt;15% of initial liquidity remains at 6h+ · <code>dumped</code> = &lt;50% of price · else <code>fine</code>. The full ledger is machine-readable at <a href="/track-record">/track-record</a> (summary) and <a href="/track-record/raw">/track-record/raw</a> (every row), and is <a href="https://github.com/wyattpalm2-eng/x402-seller/blob/main/data/track_record.jsonl">committed to a public git history</a> every 30 minutes — a tamper-evident record: we can't backdate, edit, or delete a grade without it showing.</p>

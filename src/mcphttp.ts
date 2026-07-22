@@ -23,6 +23,7 @@ import { launchRadar } from "./alpha.js";
 import { safetyReport } from "./safety.js";
 import { trackRecordSummary } from "./record.js";
 import weatherHandler from "./ported/weather-consensus.handler.cjs";
+import { bumpTool } from "./demand.js";
 
 const CHAINS = ["base", "eth", "bsc", "polygon", "arbitrum", "optimism", "solana"] as const;
 const BASE_URL = (process.env.PUBLIC_BASE_URL || "https://x402-seller-m8nx.onrender.com").replace(/\/+$/, "");
@@ -42,6 +43,12 @@ function demoAllowed(): boolean {
 const overBudget = () => ({
   content: [{ type: "text" as const, text: JSON.stringify({ error: "demo_budget_exhausted", note: `Free MCP demo budget is used up for today. The paid HTTP API has no limits — call ${BASE_URL}/vet etc. with an x402 client, or add a funded wallet.`, paid_api: BASE_URL }) }],
 });
+// Every tool invocation feeds the real-demand signal (/demand) — which tools do
+// actual MCP clients reach for? That's the crew's build compass.
+function demoAllowedFor(tool: string): boolean {
+  bumpTool(tool);
+  return demoAllowed();
+}
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: typeof data === "string" ? data : JSON.stringify(data) }] });
 
 function buildServer(): McpServer {
@@ -52,7 +59,7 @@ function buildServer(): McpServer {
     "Go/no-go verdict on a token before trading it: composite rug score (static analysis + live buy/sell simulation + LP-lock/liquidity-pull gate) + market → clear/caution/avoid with reasons. EVM + Solana. FREE demo (shared daily budget); unlimited via the paid HTTP API.",
     { chain: z.enum(CHAINS).default("base"), address: z.string().describe("token contract / mint address") },
     async ({ chain, address }) => {
-      if (!demoAllowed()) return overBudget();
+      if (!demoAllowedFor("vet_token")) return overBudget();
       const data = await vetToken(String(chain).toLowerCase(), String(address)).catch(() => null);
       return data == null ? ok({ error: "not_found", detail: "no data for that token" }) : ok(data);
     },
@@ -63,7 +70,7 @@ function buildServer(): McpServer {
     "Discover what just launched AND rug-screen it in one call: fresh token launches ranked safest-first, each with a verdict (a clean contract with unlocked LP is caution, not clear — most fresh rugs are liquidity pulls). The proactive 'safe alpha' feed. FREE demo (shared daily budget).",
     { chain: z.enum(CHAINS).default("base") },
     async ({ chain }) => {
-      if (!demoAllowed()) return overBudget();
+      if (!demoAllowedFor("launch_radar")) return overBudget();
       const data = await launchRadar(String(chain).toLowerCase()).catch(() => null);
       return data == null ? ok({ error: "no_fresh_pools" }) : ok(data);
     },
@@ -74,7 +81,7 @@ function buildServer(): McpServer {
     "Detailed composite rug/honeypot report for one token: red/green flags, 0-100 risk, live-simulation results, disagreement flag. EVM + Solana. FREE demo (shared daily budget).",
     { chain: z.enum(CHAINS).default("base"), address: z.string() },
     async ({ chain, address }) => {
-      if (!demoAllowed()) return overBudget();
+      if (!demoAllowedFor("rug_check")) return overBudget();
       const data = await safetyReport(String(chain).toLowerCase(), String(address)).catch(() => null);
       return data == null ? ok({ error: "not_found" }) : ok(data);
     },
@@ -85,7 +92,7 @@ function buildServer(): McpServer {
     "Cross-source weather consensus for any coordinates: blends Open-Meteo + NOAA/NWS + 7Timer into one temperature with an agreement score (how much independent models agree). Keyless multi-source ground truth in one call — built by the autonomous crew, ported through the bridge. FREE demo (shared daily budget); unlimited via the paid HTTP API ($0.03).",
     { lat: z.number().min(-90).max(90).describe("latitude"), lon: z.number().min(-180).max(180).describe("longitude") },
     async ({ lat, lon }) => {
-      if (!demoAllowed()) return overBudget();
+      if (!demoAllowedFor("weather_consensus")) return overBudget();
       const data = await weatherHandler({ lat: String(lat), lon: String(lon) }).catch(() => null);
       return data == null ? ok({ error: "not_found", detail: "no consensus for those coordinates" }) : ok(data);
     },
@@ -95,7 +102,7 @@ function buildServer(): McpServer {
     "track_record",
     "FREE, always: the service's public self-graded track record — its rug verdicts on fresh launches graded against what actually happened, hits AND misses. Judge the scorer by its receipts.",
     {},
-    async () => ok(trackRecordSummary()),
+    async () => { bumpTool("track_record"); return ok(trackRecordSummary()); },
   );
 
   server.tool(

@@ -110,6 +110,22 @@ export function markBuyer(req: Request): void {
   v.converted = true;
 }
 
+/**
+ * PUBLIC-SAFE demand aggregate: per-endpoint 402-probe counts split into
+ * plausible-agent signal vs labeled noise. NO IPs, NO user-agents — safe to
+ * publish and to sync into the crew's vault. This is the real-demand oracle:
+ * what actual callers probe (and walk away from) beats any simulated buyer.
+ */
+export function demandByEndpoint(): Record<string, { views: number; agent_signal: number }> {
+  const out: Record<string, { views: number; agent_signal: number }> = {};
+  for (const e of _events) {
+    const slot = (out[e.path] ??= { views: 0, agent_signal: 0 });
+    slot.views += 1;
+    if (e.label === "unknown" || e.label === "agent-client") slot.agent_signal += 1;
+  }
+  return out;
+}
+
 export function funnel(totalBuys: number) {
   const visitors = [..._visitors.values()];
   const shoppers = visitors.filter((v) => !v.converted);
