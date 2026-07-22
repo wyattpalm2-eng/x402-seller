@@ -26,6 +26,8 @@ import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, val
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
 import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.js";
 import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather } from "./ported/weather-consensus.js";
+import weatherHandler from "./ported/weather-consensus.handler.cjs";
+import { accuracyPage } from "./accuracy.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
@@ -277,6 +279,11 @@ app.get("/dashboard", freeRateLimit, (req, res) => {
 // FREE public self-graded track record — the proof a skeptical agent needs
 // before paying: our scorer graded against real outcomes, misses included.
 app.get("/track-record", freeRateLimit, (_req, res) => res.json(trackRecordSummary()));
+// The human-shareable wedge page rendering the same ledger ("we publish our misses").
+app.get("/accuracy", freeRateLimit, accuracyPage);
+// Crawler hints: everything public, and point agents at the machine docs.
+app.get("/robots.txt", freeRateLimit, (_req, res) =>
+  res.type("text/plain").send("User-agent: *\nAllow: /\n\n# agent-readable docs\n# /llms.txt  /catalog  /openapi.json  /.well-known/x402.json  /accuracy\n"));
 // Raw rows for the git snapshot Action (free; public on-chain data only, no PII).
 app.get("/track-record/raw", freeRateLimit, (_req, res) => res.json({ rows: rawRows() }));
 
@@ -318,6 +325,43 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
     res.json({
       ...data,
       demo: { note: "free demo — identical output to the paid /vet, limited to 1/hour", unlimited: "/vet via x402", price: process.env.PRICE_VET || "$0.05" },
+    });
+  } catch {
+    res.status(502).json({ error: "upstream_unavailable" });
+  }
+});
+// FREE weather demo, same thesis as /demo/vet: an agent integrates what it can
+// test without money. 1 real consensus per IP per hour, small daily cap, exact
+// paid output. (Own state maps — the vet demo's slots stay independent.)
+const _wDemoLast = new Map<string, number>();
+let _wDemoDay = "";
+let _wDemoCount = 0;
+app.get("/demo/weather", freeRateLimit, async (req, res) => {
+  const q = req.query as Record<string, any>;
+  const err = validateWeather(q);
+  if (err) return void res.status(400).json({ error: "bad_request", detail: err });
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== _wDemoDay) { _wDemoDay = today; _wDemoCount = 0; _wDemoLast.clear(); }
+  const ip = req.ip || "unknown";
+  const last = _wDemoLast.get(ip) ?? 0;
+  if (Date.now() - last < DEMO_PER_IP_MS)
+    return void res.status(429).json({
+      error: "demo_limit",
+      detail: "1 free weather consensus per hour per caller. The paid endpoint has no limits.",
+      paid_endpoint: "/weather/consensus", price: process.env.PRICE_WEATHER || "$0.03",
+      retry_after_s: Math.ceil((DEMO_PER_IP_MS - (Date.now() - last)) / 1000),
+    });
+  if (_wDemoCount >= DEMO_DAILY_CAP)
+    return void res.status(429).json({ error: "demo_limit", detail: "daily demo budget exhausted — the paid endpoint /weather/consensus is always available" });
+  try {
+    const data = await weatherHandler({ lat: String(q.lat), lon: String(q.lon) });
+    if (data == null) return void res.status(404).json({ error: "not_found", detail: "no consensus for those coordinates" });
+    // Slot consumed only on success — a 404/502 must not lock the caller out.
+    _wDemoLast.set(ip, Date.now());
+    _wDemoCount++;
+    res.json({
+      ...data,
+      demo: { note: "free demo — identical output to the paid /weather/consensus, limited to 1/hour", unlimited: "/weather/consensus via x402", price: process.env.PRICE_WEATHER || "$0.03" },
     });
   } catch {
     res.status(502).json({ error: "upstream_unavailable" });
