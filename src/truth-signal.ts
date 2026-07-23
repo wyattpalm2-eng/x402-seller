@@ -190,6 +190,8 @@ export function truthSignalSummary() {
     by_verdict: byVerdict,
     honesty_note:
       "Direction on liquid majors is close to a coin flip. If this hit rate converges to ~50%, the ledger is saying the signal has no edge — and this page will say exactly that. Either outcome is the point: it makes every other number here credible.",
+    known_data_caveat:
+      "DISCLOSURE (2026-07-23): rows recorded before this date with momentum exactly 0 were produced while the 24h-change upstream (CoinGecko) was rate-limiting our host's shared egress IP. With no change/range input, momentum is 0 by construction and the verdict defaults to 'neutral' — those rows are a degraded artifact, not verdicts the product stands behind, and they will grade as misses. The Truth Engine itself surfaced this (nine consecutive momentum-0 rows); the endpoint now returns an UNCHARGED 502 instead of a hollow 'neutral', and the engine skips the slot rather than recording one. The affected rows are LEFT IN PLACE and labeled here rather than deleted — quietly removing inconvenient rows is precisely what a tamper-evident ledger exists to prevent.",
     recent: rows.slice(-12).reverse().map((r) => ({
       kind: r.kind, symbol: r.symbol, slot: r.slot, verdict: r.verdict,
       change_pct: r.change_pct ?? null, hit: r.hit ?? null, graded: r.graded,

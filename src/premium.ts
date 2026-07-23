@@ -164,9 +164,29 @@ async function gatherInputs(symbol: string): Promise<SignalInputs> {
 }
 
 /**
+ * Is the momentum input actually present? momentumScore() coerces a missing
+ * 24h change to 0 (line ~65), and CoinGecko's markets feed carries no intraday
+ * high/low — so when that lookup fails, momentum is EXACTLY 0 by construction
+ * and the verdict is a constant "neutral" with zero information content.
+ *
+ * That is a hollow answer, not a signal. Found 2026-07-23 by the Truth Engine
+ * itself: nine consecutive ledger rows with momentum exactly 0, while the same
+ * code run off-Render returned real verdicts — CoinGecko rate-limits Render's
+ * SHARED egress IP (same defect class as the Open-Meteo weather quota). Callers
+ * must never be billed for it; see gateConsensus() for the sibling gate.
+ */
+function hasMomentumContext(inputs: SignalInputs, rangeComponent: number | null): boolean {
+  return Number.isFinite(inputs.change_24h_pct as number) || rangeComponent !== null;
+}
+
+/**
  * The EXACT signal compute, exported so the Truth Engine grades the same code
  * path buyers pay for (doctrine: every endpoint grades itself — no shadow
  * implementation that could quietly diverge from the paid one).
+ *
+ * Returns null when there is no real momentum input, so the Truth Engine skips
+ * the slot rather than recording a hollow "neutral" as if it were a prediction.
+ * A ledger polluted with non-verdicts would corrupt the very honesty mechanism.
  */
 export async function signalVerdict(symbol: string): Promise<{
   symbol: string;
@@ -176,7 +196,8 @@ export async function signalVerdict(symbol: string): Promise<{
 } | null> {
   const inputs = await gatherInputs(symbol);
   if (!Number.isFinite(inputs.price_usd)) return null;
-  const { momentum } = momentumScore(inputs.change_24h_pct, inputs.price_usd, inputs.low_24h, inputs.high_24h);
+  const { momentum, rangeComponent } = momentumScore(inputs.change_24h_pct, inputs.price_usd, inputs.low_24h, inputs.high_24h);
+  if (!hasMomentumContext(inputs, rangeComponent)) return null;
   return { symbol: inputs.base, price_usd: inputs.price_usd, momentum, verdict: verdictFor(momentum) };
 }
 
@@ -201,6 +222,16 @@ premiumRouter.get("/signal", async (req: Request, res: Response) => {
       inputs.low_24h,
       inputs.high_24h,
     );
+
+    // No momentum input ⇒ momentum is 0 by construction and the verdict is a
+    // constant "neutral" — a hollow answer. 502 BEFORE recordSale, so the
+    // payment is cancelled (>=400) and the caller is NOT billed for junk.
+    if (!hasMomentumContext(inputs, rangeComponent)) {
+      return res.status(502).json({
+        error: "upstream_unavailable",
+        detail: "24h change/range context is unavailable right now, so no real momentum can be computed — returning nothing rather than billing you for a hollow 'neutral'. Retry shortly.",
+      });
+    }
 
     // Sanitize: never emit bare NaN/Infinity — browser JSON.parse rejects them.
     const safe = (n: number | undefined): number | null =>
