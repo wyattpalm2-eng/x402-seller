@@ -75,6 +75,8 @@ if (buyerUsdc !== null && buyerUsdc <= 0) {
   console.error(`\n❌ The burner holds no USDC on Base. Send ~$1 USDC (Base network!) to:\n   ${account.address}\nthen re-run. (No ETH needed — the facilitator pays gas via EIP-3009.)`);
   process.exit(1);
 }
+if (buyerUsdc === null)
+  console.warn("⚠ Couldn't verify the burner's balance (Base RPC unreachable) — proceeding anyway. If the payment fails with an insufficient-funds error, fund the burner and re-run.");
 
 const payFetch = wrapFetchWithPaymentFromConfig(fetch, {
   schemes: [{ network: NETWORK, client: new ExactEvmScheme(account) }],

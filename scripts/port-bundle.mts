@@ -120,6 +120,28 @@ async function main() {
   if (!route || !/^(GET\s+)?\//i.test(String(route))) reasons.push(`route invalid (need a path like /weather/consensus): ${route}`);
   if (price == null) reasons.push("no priceUSDC in meta/PROBE");
 
+  // TRUTH-SPEC (bridge law since 2026-07-22): every bundle declares how reality
+  // will grade it, or gradeable:false with a reason. Prose without enforcement
+  // is theater — so it's enforced here. (S-006 predates the spec; exempt.)
+  const isSeamTest = meta.seamTest === true || String(meta.id ?? probe.id ?? "") === "S-006";
+  if (!has("TRUTH.json")) {
+    if (!isSeamTest) reasons.push("TRUTH-SPEC: bundle lacks TRUTH.json — declare how reality will grade this endpoint, or {\"gradeable\": false, \"why\": \"…\"} (see bridge/TRUTH-SPEC.md)");
+  } else {
+    try {
+      const truth = JSON.parse(fs.readFileSync(path.join(dir, "TRUTH.json"), "utf8"));
+      if (typeof truth.gradeable !== "boolean") reasons.push("TRUTH.json: `gradeable` must be a boolean");
+      else if (truth.gradeable) {
+        if (!truth.claim) reasons.push("TRUTH.json: gradeable endpoints need `claim` (the falsifiable assertion)");
+        if (!truth.predict?.field || !truth.predict?.sample?.length) reasons.push("TRUTH.json: gradeable endpoints need predict.field + predict.sample[]");
+        const src = String(truth.grade?.truth_source ?? "");
+        if (!src || !truth.grade?.lag || !truth.grade?.metric) reasons.push("TRUTH.json: gradeable endpoints need grade.{truth_source, lag, metric}");
+        if (src && FORBIDDEN_HOSTS.some((f) => src.toLowerCase().includes(f))) reasons.push(`TRUTH.json: truth_source hits a KEYED provider — truth sources must be keyless + independent`);
+      } else if (!truth.why) {
+        reasons.push("TRUTH.json: gradeable:false requires `why` (silence about gradability is what the spec forbids)");
+      }
+    } catch { reasons.push("TRUTH.json is not valid JSON"); }
+  }
+
   const fullPort = has("handler.js") && has("PROOF.md");
   let behaviour = "specs-only (handler.js/PROOF.md not synced yet)";
   if (fullPort) {

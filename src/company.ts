@@ -115,7 +115,7 @@ export function companyPage(catalogCount: number) {
 <div class="law"><b>Keyless data only.</b> Everything sold is computed from open sources — no resold third-party API data, no ToS laundering.</div>
 
 <h2>Kick the tires</h2>
-<p class="sub" style="font-size:14.5px">Free, right now, no wallet: <code>GET /demo/vet?chain=base&address=0x…</code> · <code>GET /demo/weather?lat=40.71&lon=-74.01</code> · MCP <code>POST /mcp</code> (6 tools, daily demo budget). Paid is keyless — the x402 payment IS the auth: <a href="/catalog">/catalog</a> · <a href="/llms.txt">/llms.txt</a> · <a href="/.well-known/x402.json">x402 manifest</a>.</p>
+<p class="sub" style="font-size:14.5px">Free, right now, no wallet: <code>GET /demo/vet?chain=base&address=0x…</code> · <code>GET /demo/weather?lat=40.71&lon=-74.01</code> · MCP <code>POST /mcp</code> (7 tools, daily demo budget). Paid is keyless — the x402 payment IS the auth: <a href="/catalog">/catalog</a> · <a href="/llms.txt">/llms.txt</a> · <a href="/.well-known/x402.json">x402 manifest</a>.</p>
 
 <div class="foot">Truth ledgers — weather: ${esc(tw.predictions_recorded)} predictions${tw.graded ? `, MAE ${esc(tw.mae_c)}°C` : ""} (<a href="/truth/weather">live</a>) · market calls: <a href="/truth/signal">/truth/signal</a> · rug scorer: ${esc(tr.rugs_we_flagged ?? "–")}/${esc(tr.rugs_observed ?? "–")} rugs flagged first (<a href="/accuracy">receipts</a>) · doctrine: <a href="/truth">/truth</a> · repo: <a href="https://github.com/wyattpalm2-eng/x402-seller">github.com/wyattpalm2-eng/x402-seller</a></div>
 </body></html>`);

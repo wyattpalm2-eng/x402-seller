@@ -16,12 +16,26 @@ import handler from "./weather-consensus.handler.cjs";
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 export const PRICE_WEATHER = process.env.PRICE_WEATHER || "$0.03";
 
+/**
+ * Quality gate at the ROUTE layer (the crew's handler stays vendored verbatim):
+ * a "consensus" of ONE source is not a consensus — under upstream degradation
+ * (e.g. Open-Meteo's shared-IP daily quota, hit 2026-07-23) the raw handler
+ * returns sourceCount:1 with agreementScore:100, which would bill a buyer $0.03
+ * for single-source data dressed as perfect agreement. serve() maps null to an
+ * UNCHARGED 404 — so degraded results cost the buyer nothing, per the law that
+ * buyers never pay for junk.
+ */
+export function gateConsensus<T extends { consensus?: { sourceCount?: number } }>(data: T | null): T | null {
+  if (data == null) return null;
+  return (data.consensus?.sourceCount ?? 0) >= 2 ? data : null;
+}
+
 export const weatherRouter: Router = Router();
 weatherRouter.get("/weather/consensus", (req: Request, res: Response) => {
   const lat = String(req.query.lat ?? "");
   const lon = String(req.query.lon ?? "");
-  return serve(res, "GET /weather/consensus", priceToUsd(PRICE_WEATHER), `${lat},${lon}`, () =>
-    handler({ lat, lon }),
+  return serve(res, "GET /weather/consensus", priceToUsd(PRICE_WEATHER), `${lat},${lon}`, async () =>
+    gateConsensus(await handler({ lat, lon })),
   );
 });
 

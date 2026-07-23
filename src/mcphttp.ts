@@ -23,6 +23,7 @@ import { launchRadar } from "./alpha.js";
 import { safetyReport } from "./safety.js";
 import { trackRecordSummary } from "./record.js";
 import weatherHandler from "./ported/weather-consensus.handler.cjs";
+import { gateConsensus } from "./ported/weather-consensus.js";
 import { bumpTool } from "./demand.js";
 
 const CHAINS = ["base", "eth", "bsc", "polygon", "arbitrum", "optimism", "solana"] as const;
@@ -93,8 +94,8 @@ function buildServer(): McpServer {
     { lat: z.number().min(-90).max(90).describe("latitude"), lon: z.number().min(-180).max(180).describe("longitude") },
     async ({ lat, lon }) => {
       if (!demoAllowedFor("weather_consensus")) return overBudget();
-      const data = await weatherHandler({ lat: String(lat), lon: String(lon) }).catch(() => null);
-      return data == null ? ok({ error: "not_found", detail: "no consensus for those coordinates" }) : ok(data);
+      const data = gateConsensus(await weatherHandler({ lat: String(lat), lon: String(lon) }).catch(() => null));
+      return data == null ? ok({ error: "not_found", detail: "fewer than 2 weather sources reachable for those coordinates right now — a consensus of one is not a consensus" }) : ok(data);
     },
   );
 

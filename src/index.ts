@@ -25,7 +25,7 @@ import { screenRouter, screenRoutes, screenCatalog, validateScreen } from "./scr
 import { compositesRouter, compositesRoutes, compositesCatalog, validateVet, validateBrief, vetToken } from "./composites.js";
 import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startHistory } from "./history.js";
 import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.js";
-import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather } from "./ported/weather-consensus.js";
+import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather, gateConsensus } from "./ported/weather-consensus.js";
 import weatherHandler from "./ported/weather-consensus.handler.cjs";
 import { accuracyPage } from "./accuracy.js";
 import { demandReport, bumpDemo } from "./demand.js";
@@ -170,10 +170,16 @@ const PAID_PATHS = new Set(Object.keys(routes).map((k) => k.split(" ")[1]));
 // ─── App ─────────────────────────────────────────────────────────────────
 const app = express();
 app.disable("x-powered-by");
-// Trust exactly ONE proxy hop (the tunnel/PaaS in front) so req.ip is the real
-// client. NOT `true` — that would let a client spoof X-Forwarded-For to dodge the
-// rate limiter. Override via TRUST_PROXY if your platform chains more proxies.
-app.set("trust proxy", Number(process.env.TRUST_PROXY ?? 1));
+// Trust the full proxy chain so req.ip is the ORIGINAL client (leftmost
+// X-Forwarded-For). Render's chain includes ROTATING internal hops (10.x.x.x),
+// so any fixed hop count keys per-IP logic on a proxy that changes per request
+// — which silently broke both demo limiters and funnel identity (found by
+// audit 2026-07-23: visitors showed as rotating 10.x internals). Leftmost-XFF
+// is client-spoofable, so per-IP limits are best-effort for honest clients;
+// the hard backstops are the GLOBAL daily demo caps, which a spoofer can't
+// dodge. Override via TRUST_PROXY (number or "true"/"false") if rehosting.
+const _tp = process.env.TRUST_PROXY?.trim();
+app.set("trust proxy", _tp === undefined ? true : /^\d+$/.test(_tp) ? Number(_tp) : _tp === "true");
 
 // Minimal security headers (JSON API — light touch, no external deps).
 app.use((_req, res, next) => {
@@ -382,8 +388,8 @@ app.get("/demo/weather", freeRateLimit, async (req, res) => {
   if (_wDemoCount >= DEMO_DAILY_CAP)
     return void res.status(429).json({ error: "demo_limit", detail: "daily demo budget exhausted — the paid endpoint /weather/consensus is always available" });
   try {
-    const data = await weatherHandler({ lat: String(q.lat), lon: String(q.lon) });
-    if (data == null) return void res.status(404).json({ error: "not_found", detail: "no consensus for those coordinates" });
+    const data = gateConsensus(await weatherHandler({ lat: String(q.lat), lon: String(q.lon) }));
+    if (data == null) return void res.status(404).json({ error: "not_found", detail: "fewer than 2 weather sources reachable for those coordinates right now — a consensus of one is not a consensus, try again later" });
     // Slot consumed only on success — a 404/502 must not lock the caller out.
     _wDemoLast.set(ip, Date.now());
     _wDemoCount++;
