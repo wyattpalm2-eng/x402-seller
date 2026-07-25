@@ -56,6 +56,7 @@ const P = {
   // Crew-ported endpoints. These were live and sellable for a day while being INVISIBLE to every
   // x402 crawler, because the porter wired index.ts but not this spec — /catalog listed them,
   // /.well-known/x402.json did not, and the manifest is what directories actually ingest.
+  agMetrics: process.env.PRICE_AG_METRICS || "$0.03",
   stormRisk: process.env.PRICE_STORM_RISK || "$0.04",
   walletFingerprint: process.env.PRICE_WALLET_FINGERPRINT || "$0.05",
   tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.05",
