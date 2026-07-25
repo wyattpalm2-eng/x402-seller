@@ -1,0 +1,12 @@
+{
+  "id": "S-011",
+  "route": "GET /token/risk/:address",
+  "expect402": [
+    "/token/risk/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913?chain=base",
+    "/token/risk/0x4200000000000000000000000000000000000006?chain=base"
+  ],
+  "expect400": [
+    "/token/risk/invalid-input?chain=base",
+    "/token/risk/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913?chain=__nope__"
+  ]
+}
