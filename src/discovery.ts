@@ -61,6 +61,7 @@ const P = {
   walletFingerprint: process.env.PRICE_WALLET_FINGERPRINT || "$0.05",
   tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.05",
   tokenConcentration: process.env.PRICE_TOKEN_CONCENTRATION || "$0.05",
+  etfFlows: process.env.PRICE_ETF_FLOWS || "$0.05",
 };
 
 export interface Endpoint {
@@ -307,6 +308,15 @@ export const ENDPOINTS: Endpoint[] = [
       chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },
     },
     output_example: { chain: "base", summary: { screened: 2, clear: 1, caution: 1, avoid: 0 }, tokens: [{ symbol: "WETH", verdict: "ok", risk_score: 0 }] },
+  },
+  {
+    method: "GET", path: "/etf/flows", price: P.etfFlows,
+    description: "Daily net flow estimates for US spot BTC/ETH ETFs -- aggregates 10+ Yahoo Finance OHLCV feeds and computes volume-weighted flow so a bot avoids 10+ calls and manual flow math. Same-day freshness beats SEC N-PORT T+30.",
+    input: {
+      symbols: { type: "string", required: true, example: "IBIT,FBTC,ARKB" },
+      days: { type: "string", required: false, default: "5", example: "5" },
+    },
+    output_example: { as_of: "2026-07-25", symbols_queried: ["IBIT", "FBTC", "ARKB"], total_net_flow_usd: 125000000, per_symbol: [{ symbol: "IBIT", net_flow_usd: 80000000, close: 57.32, volume: 12000000 }, { symbol: "FBTC", net_flow_usd: 30000000, close: 55.10, volume: 4500000 }, { symbol: "ARKB", net_flow_usd: 15000000, close: 52.80, volume: 2100000 }], source: "Yahoo Finance OHLCV", methodology: "volume-weighted price-action estimate" },
   },
 ];
 

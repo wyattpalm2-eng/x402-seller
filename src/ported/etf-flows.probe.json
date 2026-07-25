@@ -1,0 +1,9 @@
+{
+  "id": "S-021",
+  "route": "GET /etf/flows",
+  "expect402": [
+    "/etf/flows?symbols=IBIT,FBTC,ARKB&days=5",
+    "/etf/flows?symbols=ETHA,ETHE,FETH&days=5"
+  ],
+  "expect400": []
+}
