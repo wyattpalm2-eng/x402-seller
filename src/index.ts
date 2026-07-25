@@ -27,6 +27,7 @@ import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startH
 import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.js";
 import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather, gateConsensus } from "./ported/weather-consensus.js";
 import weatherHandler from "./ported/weather-consensus.handler.cjs";
+import { stormRiskRouter, stormRiskRoutes, stormRiskCatalog, validateStormRisk } from "./ported/storm-risk.js";
 import { walletFingerprintRouter, walletFingerprintRoutes, walletFingerprintCatalog, validateWalletFingerprint } from "./ported/wallet-fingerprint.js";
 import { tokenRiskRouter, tokenRiskRoutes, tokenRiskCatalog, validateTokenRisk } from "./ported/token-risk.js";
 import { accuracyPage } from "./accuracy.js";
@@ -91,6 +92,7 @@ const CATALOG = [
   ...compositesCatalog,
   ...alphaCatalog,
   ...weatherCatalog,
+  ...stormRiskCatalog,
   ...walletFingerprintCatalog,
   ...tokenRiskCatalog,
 ];
@@ -123,6 +125,7 @@ const routes = {
   ...compositesRoutes,
   ...alphaRoutes,
   ...weatherRoutes,
+  ...stormRiskRoutes,
   ...walletFingerprintRoutes,
   ...tokenRiskRoutes,
 };
@@ -436,6 +439,7 @@ app.use((req, res, next) => {
   else if (req.path === "/brief") err = validateBrief(q);
   else if (req.path === "/alpha/launches") err = validateAlpha(q);
   else if (req.path === "/weather/consensus") err = validateWeather(q);
+  else if (req.path === "/wx/storm") err = validateStormRisk(q, req.path);
   else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
   else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
@@ -459,6 +463,7 @@ app.use(screenRouter);
 app.use(compositesRouter);
 app.use(alphaRouter);
 app.use(weatherRouter);
+app.use(stormRiskRouter);
 app.use(walletFingerprintRouter);
 app.use(tokenRiskRouter);
 
