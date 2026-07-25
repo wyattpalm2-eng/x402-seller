@@ -297,7 +297,24 @@ app.get("/dashboard", freeRateLimit, (req, res) => {
   const key = process.env.FUNNEL_KEY?.trim();
   if (key && String(req.query.key ?? "") !== key)
     return void res.status(403).type("html").send("<!doctype html><title>locked</title><body style='font:16px system-ui;max-width:40ch;margin:15vh auto;color:#333'><h3>Dashboard is private</h3><p>Append <code>?key=YOUR_KEY</code> to the URL.</p>");
-  res.type("html").send(DASHBOARD_HTML);
+  // A bare "0" on this page reads as "the business did nothing", when it usually means the free
+  // tier restarted and wiped in-process counters (its disk does not survive a restart, so the
+  // sales ledger cannot be rehydrated either). Say so on the page, with the boot time, so a zero
+  // is never mistaken for a fact about the business. The durable figures are the on-chain balance
+  // and the lifetime totals accumulated off-host.
+  const st = stats();
+  const bootedMs = Date.parse(String(st.bootedAt || "")) || Date.now();
+  const upMin = Math.max(0, Math.round((Date.now() - bootedMs) / 60000));
+  const banner =
+    `<div style="margin:8px 12px;padding:10px 14px;border:1px solid #3a3f4b;border-radius:8px;` +
+    `background:#11161f;color:#c8d0dc;font:13px/1.5 system-ui,sans-serif">` +
+    `<b>Counters below are per-process.</b> This service runs on a free tier that wipes its disk on ` +
+    `restart, so these reset to 0 whenever it restarts &mdash; that is the host, not the business. ` +
+    `Current process started <b>${new Date(bootedMs).toISOString().replace("T", " ").slice(0, 16)}Z</b> ` +
+    `(${upMin} min ago); counters cover only that window. ` +
+    `The figures that never reset are <b>settled USDC on-chain</b> and the off-host lifetime ledger.` +
+    `</div>`;
+  res.type("html").send(DASHBOARD_HTML.replace("<body>", "<body>" + banner));
 });
 
 // FREE public self-graded track record — the proof a skeptical agent needs
