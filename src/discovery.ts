@@ -60,6 +60,7 @@ const P = {
   stormRisk: process.env.PRICE_STORM_RISK || "$0.04",
   walletFingerprint: process.env.PRICE_WALLET_FINGERPRINT || "$0.05",
   tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.05",
+  tokenConcentration: process.env.PRICE_TOKEN_CONCENTRATION || "$0.05",
 };
 
 export interface Endpoint {
@@ -155,8 +156,30 @@ export const ENDPOINTS: Endpoint[] = [
     },
   },
   {
+    method: "GET", path: "/token/concentration/{address}", price: P.tokenConcentration,
+    description: "HOLDER CONCENTRATION ANALYTICS for any Base or Ethereum token: fetches real ERC-20 Transfer events from a public RPC, aggregates per-address balances, and computes four statistical measures of holder distribution -- Gini coefficient, top-10% share, Herfindahl-Hirschman Index (HHI), and Shannon entropy. A bot that tries this itself must maintain paginated event parsing across thousands of logs, aggregate transfers per address, and implement the statistical math -- real work that takes ongoing maintenance to keep accurate. One call returns the full concentration profile. Address is validated pre-paywall -- a malformed address is a 400, never a charge.",
+    input: {
+      address: { type: "string", required: true, example: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth"] },
+    },
+    output_example: {
+      query: { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", chain: "base" },
+      token: { name: "USD Coin", symbol: "USDC", decimals: 6 },
+      concentration: {
+        gini: 0.98,
+        top10pctShare: 0.85,
+        hhi: 7200,
+        shannonEntropy: 3.42,
+        totalHolders: 184320,
+        totalSupply: "2589012034.000000",
+      },
+      verdict: "highly concentrated",
+      computedAt: "2026-07-25T11:42:00Z",
+    },
+  },
+  {
     method: "GET", path: "/price", price: P.price,
-    description: "Spot crypto price in USD.",
+    description: "Spot crypto price in USD from CoinGecko, normalized to one call. Saves an agent stitching price feeds from multiple tickers or managing a CoinGecko key; the price is the work completed, not a raw feed to process further.",
     input: { symbol: { type: "string", required: false, default: "BTC", example: "ETH" } },
     output_example: { symbol: "BTC-USD", price_usd: 63950.12, source: "coinbase" },
   },
