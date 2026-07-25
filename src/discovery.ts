@@ -108,6 +108,22 @@ export const ENDPOINTS: Endpoint[] = [
     },
   },
   {
+    method: "GET", path: "/wx/ag/{lat}/{lon}", price: P.agMetrics,
+    description: "AGRICULTURAL RISK METRICS for any coordinate — pulls 13 hourly variables from Open-Meteo (4 soil-moisture layers, 2 soil temperatures, ET0 reference evapotranspiration, wind and gusts, humidity, temperature) and synthesizes them into a computed 0-100 ag-risk score with explicit flags for drought, excess precipitation, high wind, high VPD and low soil moisture. Also returns derived VPD, GDD and ET0. Replicating this means 8+ hourly API calls plus the vapour-pressure-deficit and growing-degree-day math, then reconciling it into one decision. For irrigation scheduling, spray-window selection, harvest timing, crop-insurance triggers and farm-robot go/no-go.",
+    input: {
+      lat: { type: "number", required: true, example: "40.71" },
+      lon: { type: "number", required: true, example: "-74.00" },
+    },
+    output_example: {
+      query: { lat: 40.71, lon: -74.0 },
+      agRisk: { score: 38, level: "moderate", flags: ["high_vpd"] },
+      derived: { vpdKpa: 1.82, gddToday: 14.2, et0MmDay: 4.6 },
+      soil: { moisture0_1cm: 0.21, moisture1_3cm: 0.24, temp0cm: 24.8 },
+      wind: { speedKph: 18, gustKph: 31 },
+      computedAt: "2026-07-25T04:40:00Z",
+    },
+  },
+  {
     method: "GET", path: "/token/risk/{address}", price: P.tokenRisk,
     description: "COMPOSITE TOKEN RISK SCORE (0-100) for any Base or Ethereum token, computed from five independent on-chain signals and fused into one verdict: holder concentration sampled from real Transfer event logs, Sourcify source-verification status, contract bytecode analysis, DexScreener liquidity + 24h volume + transaction counts, and supply distribution across recent recipients. Collapses 5+ separate API calls and the scoring logic an agent would have to write and maintain into a single request. The address is validated BEFORE the paywall, so a malformed address returns 400 and is never charged.",
     input: {
