@@ -1,0 +1,12 @@
+{
+  "id": "S-009",
+  "route": "GET /wallet/fingerprint/:address",
+  "expect402": [
+    "/wallet/fingerprint/0x4200000000000000000000000000000000000006?chain=base",
+    "/wallet/fingerprint/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913?chain=base"
+  ],
+  "expect400": [
+    "/wallet/fingerprint/invalid-input?chain=base",
+    "/wallet/fingerprint/0x4200000000000000000000000000000000000006?chain=__nope__"
+  ]
+}
