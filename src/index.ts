@@ -474,6 +474,35 @@ app.use((req, res, next) => {
 // this network's "exact" scheme is enough, so a single flaky operator can't
 // break settlement. (Total outage of all facilitators fails the deploy, and
 // Render then keeps the previous healthy build — the correct failsafe.)
+// ─── HEAD MUST NOT BYPASS THE PAYWALL ────────────────────────────────────
+// Verified 2026-07-25, two library behaviours combining into a free-compute + phantom-revenue bug:
+//   1. express/lib/router/route.js:113  `if (method === 'head' && !this.methods['head']) method = 'get'`
+//      -- Express dispatches HEAD to the GET handler.
+//   2. @x402/core matches routes verb-sensitively:
+//      `route.regex.test(path) && (route.verb === "*" || route.verb === upperMethod)`
+//      Every paid route is keyed "GET /x", so a HEAD never matches, the paywall answers
+//      "no-payment-required", and @x402/express calls next().
+// Net effect: HEAD /price ran the paid handler (real upstream API calls, on our budget), returned
+// 200, and called recordSale() -- inventing revenue that never existed. That is where the
+// "delivered but never settled" backlog came from; the deliveries were partly our own phantom.
+// No response body is sent for HEAD, so paid DATA never leaked -- but the compute and the
+// accounting both did. 405 is the honest answer: x402 payment is defined for GET here.
+app.use((req, res, next) => {
+  if (req.method !== "HEAD") return next();
+  const p = req.path;
+  // reuse the existing PAID_PATHS set; handle both exact routes and /:param routes
+  const isPaid = [...PAID_PATHS].some((rp) => {
+    const base = rp.split("/:")[0];
+    return rp.includes("/:") ? p.startsWith(base + "/") : p === rp;
+  });
+  if (!isPaid) return next();
+  res.setHeader("Allow", "GET");
+  return void res.status(405).json({
+    error: "method_not_allowed",
+    detail: "Paid endpoints are GET-only. HEAD cannot carry an x402 payment, so it is refused rather than served free.",
+  });
+});
+
 app.use(paymentMiddleware(routes, resourceServer));
 
 // ─── SETTLEMENT RECEIPTS ─────────────────────────────────────────────────

@@ -129,7 +129,29 @@ export async function safetyReport(chainKey: string, address: string) {
   const t = gp?.result?.[addr];
   if (!t && !hp) return null; // neither source had anything -> 404
 
-  const lpLocked = t && Array.isArray(t.lp_holders) ? t.lp_holders.some((h: any) => String(h?.is_locked) === "1") : null;
+  // LP-LOCK: require a MEANINGFUL locked share, not merely "some holder is flagged locked".
+  //
+  // The old check was `.some(h => String(h.is_locked) === "1")` with no threshold. Every
+  // UniswapV2 pool burns 1000 wei of MINIMUM_LIQUIDITY to the null address at creation, and GoPlus
+  // reports that burn as a locked LP holder with percent ~6.5e-17. So `.some()` returned true off
+  // 0.0000000000000077% of LP supply, for essentially every V2 token in existence.
+  //
+  // That single boolean suppressed BOTH LP risk checks (weights 25 and 30 below) and raised a green
+  // flag -- cancelling 55 risk points while 99.999999999999999% of the LP sat unlocked. It is the
+  // main reason this scorer was rank-inverted: on the 881 graded rows in data/track_record.jsonl,
+  // tokens we called "ok" rugged 78.3% of the time against a 40.1% base rate, while "danger"
+  // rugged only 22.3%. The verdict pointed the wrong way.
+  //
+  // `percent` is a fraction summing to 1.0 across holders, and the locked share is sharply bimodal
+  // in live sampling (near-zero dust vs exactly 1.0, nothing between), so 0.5 separates cleanly.
+  const LP_LOCK_MIN_SHARE = 0.5;
+  const lpLockedShare =
+    t && Array.isArray(t.lp_holders)
+      ? t.lp_holders
+          .filter((h: any) => String(h?.is_locked) === "1")
+          .reduce((sum: number, h: any) => sum + (Number(h?.percent) || 0), 0)
+      : null;
+  const lpLocked = lpLockedShare === null ? null : lpLockedShare >= LP_LOCK_MIN_SHARE;
   const gpBuyTax = t ? pct(t.buy_tax) : null;
   const gpSellTax = t ? pct(t.sell_tax) : null;
 
