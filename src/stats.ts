@@ -18,7 +18,46 @@ type Endpoint = { calls: number; revenueUsd: number };
 const byEndpoint = new Map<string, Endpoint>();
 let totalCalls = 0;
 let totalRevenueUsd = 0;
-const startedAt = new Date().toISOString();
+const bootedAt = new Date().toISOString();
+let ledgerSince: string | null = null;
+
+/**
+ * REHYDRATE ON BOOT — why this exists.
+ *
+ * These counters were memory-only: `let totalCalls = 0` on every process start. The ledger was
+ * written and never read back. Render's free tier spins the service down after ~15 minutes idle,
+ * so the dashboard reset itself to 0/0 several times an hour on its own, and every deploy wiped it
+ * too. Anyone watching concluded nothing was selling when the truth was that the scoreboard had
+ * amnesia.
+ *
+ * Reading the ledger back at startup makes the numbers survive sleep/wake and restarts. Disk on
+ * the free tier is still ephemeral ACROSS deploys, so a redeploy legitimately starts a new ledger
+ * — that is why `ledgerSince` is reported, and why the only number that never resets is settled
+ * USDC on-chain, which is nobody's counter but the blockchain's.
+ */
+function rehydrate(): void {
+  try {
+    if (!fs.existsSync(LEDGER)) return;
+    const lines = fs.readFileSync(LEDGER, "utf8").split("\n").filter(Boolean);
+    for (const line of lines) {
+      try {
+        const row = JSON.parse(line);
+        if (!row || typeof row.route !== "string") continue;
+        const usd = Number(row.priceUsd) || 0;
+        const e = byEndpoint.get(row.route) ?? { calls: 0, revenueUsd: 0 };
+        e.calls += 1;
+        e.revenueUsd += usd;
+        byEndpoint.set(row.route, e);
+        totalCalls += 1;
+        totalRevenueUsd += usd;
+        if (!ledgerSince && row.at) ledgerSince = String(row.at);
+      } catch { /* one corrupt line must not lose the whole ledger */ }
+    }
+    if (totalCalls > 0) {
+      console.log(`  ledger rehydrated: ${totalCalls} prior deliveries ($${totalRevenueUsd.toFixed(3)}) since ${ledgerSince}`);
+    }
+  } catch { /* never let bookkeeping block startup */ }
+}
 
 /** "$0.01" -> 0.01 */
 export function priceToUsd(price: string): number {
@@ -63,6 +102,24 @@ type Settlement = { settled: number; failed: number; pending: number; lastTx?: s
 const settlement: Settlement = { settled: 0, failed: 0, pending: 0 };
 const RECEIPTS = path.join(__dirname, "..", "settlements.jsonl");
 
+/** Same amnesia problem, same cure: replay the receipt ledger so settlement survives a restart. */
+function rehydrateSettlements(): void {
+  try {
+    if (!fs.existsSync(RECEIPTS)) return;
+    for (const line of fs.readFileSync(RECEIPTS, "utf8").split("\n").filter(Boolean)) {
+      try {
+        const r = JSON.parse(line);
+        if (r.success === true) { settlement.settled += 1; if (r.txHash) settlement.lastTx = r.txHash; }
+        else if (r.success === false) { settlement.failed += 1; if (r.error) settlement.lastError = r.error; }
+        else { settlement.pending += 1; if (r.error) settlement.lastError = r.error; }
+        if (r.at) settlement.lastAt = String(r.at);
+      } catch { /* skip a corrupt receipt, keep the rest */ }
+    }
+    const seen = settlement.settled + settlement.failed + settlement.pending;
+    if (seen > 0) console.log(`  receipts rehydrated: ${settlement.settled} settled / ${settlement.failed} failed / ${settlement.pending} unsettled`);
+  } catch { /* never block startup */ }
+}
+
 /**
  * Record what the facilitator said about settling one delivered call.
  * `success` undefined means the header was absent -> nothing settled that we can see.
@@ -84,11 +141,19 @@ export function recordSettlement(route: string, success: boolean | undefined, tx
   console.log(`  ${tag}  ${route}   (settled ${settlement.settled} / failed ${settlement.failed} / unsettled ${settlement.pending})`);
 }
 
+// Replay both ledgers once, at module load, before anything reads the counters.
+rehydrate();
+rehydrateSettlements();
+
 export function stats() {
   const collected = settlement.settled;
   const uncollected = totalCalls - collected;
   return {
-    startedAt,
+    // bootedAt = this process. ledgerSince = how far the surviving numbers actually reach back.
+    // Reporting only bootedAt is what made the dashboard look like it reset to zero.
+    bootedAt,
+    ledgerSince: ledgerSince ?? bootedAt,
+    startedAt: ledgerSince ?? bootedAt,
     // DELIVERED -- what we handed over. A receivable, NOT revenue.
     totalPaidCalls: totalCalls,
     estRevenueUsd: Number(totalRevenueUsd.toFixed(4)),
