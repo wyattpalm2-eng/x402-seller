@@ -12,7 +12,7 @@ import { getReceiveAddress } from "../wallet.js";
 import handler from "./token-risk.handler.cjs";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_TOKEN_RISK = process.env.PRICE_TOKEN_RISK || "$0.05";
+export const PRICE_TOKEN_RISK = process.env.PRICE_TOKEN_RISK || "$0.01";
 
 export const tokenRiskRouter: Router = Router();
 tokenRiskRouter.get("/token/risk/:address", (req: Request, res: Response) => {

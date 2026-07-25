@@ -311,7 +311,7 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/etf/flows", price: P.etfFlows,
-    description: "Daily net flow estimates for US spot BTC/ETH ETFs -- aggregates 10+ Yahoo Finance OHLCV feeds and computes volume-weighted flow so a bot avoids 10+ calls and manual flow math. Same-day freshness beats SEC N-PORT T+30.",
+    description: "Skip parsing 10+ SEC filings and Yahoo Finance feeds yourself -- one call returns volume-weighted net flow estimates for US spot BTC/ETH ETFs with same-day freshness (SEC N-PORT lags T+30). Aggregates 10+ OHLCV sources and does the flow math so a bot saves ~15 minutes of multi-source fetch + computation per query.",
     input: {
       symbols: { type: "string", required: true, example: "IBIT,FBTC,ARKB" },
       days: { type: "string", required: false, default: "5", example: "5" },

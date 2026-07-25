@@ -77,9 +77,9 @@ if (!/^0x[a-fA-F0-9]{40}$/.test(PAY_TO)) {
 
 // Price per call. Cents-to-dollars strings, x402 format.
 const PRICES = {
-  price: process.env.PRICE_CRYPTO || "$0.001",
-  stock: process.env.PRICE_STOCK || "$0.002",
-  markets: process.env.PRICE_MARKETS || "$0.005",
+  price: process.env.PRICE_CRYPTO || "$0.01",
+  stock: process.env.PRICE_STOCK || "$0.01",
+  markets: process.env.PRICE_MARKETS || "$0.01",
 };
 
 const CATALOG = [
@@ -380,7 +380,7 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
     return void res.status(429).json({
       error: "demo_limit",
       detail: "1 free demo vet per hour per caller. The paid endpoint has no limits.",
-      paid_endpoint: "/vet", price: process.env.PRICE_VET || "$0.05",
+      paid_endpoint: "/vet", price: process.env.PRICE_VET || "$0.01",
       retry_after_s: Math.ceil((DEMO_PER_IP_MS - (Date.now() - last)) / 1000),
     });
   if (_demoCount >= DEMO_DAILY_CAP)
@@ -395,7 +395,7 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
     bumpDemo("vet"); // real-demand signal → /demand
     res.json({
       ...data,
-      demo: { note: "free demo — identical output to the paid /vet, limited to 1/hour", unlimited: "/vet via x402", price: process.env.PRICE_VET || "$0.05" },
+      demo: { note: "free demo — identical output to the paid /vet, limited to 1/hour", unlimited: "/vet via x402", price: process.env.PRICE_VET || "$0.01" },
     });
   } catch {
     res.status(502).json({ error: "upstream_unavailable" });
@@ -419,7 +419,7 @@ app.get("/demo/weather", freeRateLimit, async (req, res) => {
     return void res.status(429).json({
       error: "demo_limit",
       detail: "1 free weather consensus per hour per caller. The paid endpoint has no limits.",
-      paid_endpoint: "/weather/consensus", price: process.env.PRICE_WEATHER || "$0.03",
+      paid_endpoint: "/weather/consensus", price: process.env.PRICE_WEATHER || "$0.01",
       retry_after_s: Math.ceil((DEMO_PER_IP_MS - (Date.now() - last)) / 1000),
     });
   if (_wDemoCount >= DEMO_DAILY_CAP)
@@ -433,7 +433,7 @@ app.get("/demo/weather", freeRateLimit, async (req, res) => {
     bumpDemo("weather"); // real-demand signal → /demand
     res.json({
       ...data,
-      demo: { note: "free demo — identical output to the paid /weather/consensus, limited to 1/hour", unlimited: "/weather/consensus via x402", price: process.env.PRICE_WEATHER || "$0.03" },
+      demo: { note: "free demo — identical output to the paid /weather/consensus, limited to 1/hour", unlimited: "/weather/consensus via x402", price: process.env.PRICE_WEATHER || "$0.01" },
     });
   } catch {
     res.status(502).json({ error: "upstream_unavailable" });

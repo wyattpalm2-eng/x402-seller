@@ -12,7 +12,7 @@ import { getReceiveAddress } from "../wallet.js";
 import handler from "./wx-ag.handler.cjs";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_WX_AG = process.env.PRICE_WX_AG || "$0.03";
+export const PRICE_WX_AG = process.env.PRICE_WX_AG || "$0.01";
 
 export const wxAgRouter: Router = Router();
 wxAgRouter.get("/wx/ag/:lat/:lon", (req: Request, res: Response) => {

@@ -28,8 +28,8 @@ import { getReceiveAddress } from "./wallet.js";
 import { priceToUsd } from "./stats.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_VET = process.env.PRICE_VET || "$0.05";
-export const PRICE_BRIEF = process.env.PRICE_BRIEF || "$0.03";
+export const PRICE_VET = process.env.PRICE_VET || "$0.01";
+export const PRICE_BRIEF = process.env.PRICE_BRIEF || "$0.01";
 
 const SYMBOL_RE = /^[A-Z0-9-]{1,12}$/;
 

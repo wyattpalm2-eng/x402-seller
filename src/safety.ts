@@ -33,7 +33,7 @@ import { priceToUsd } from "./stats.js";
 import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_SAFETY = process.env.PRICE_ONCHAIN_SAFETY || "$0.03";
+export const PRICE_SAFETY = process.env.PRICE_ONCHAIN_SAFETY || "$0.01";
 
 // our slug -> GoPlus numeric chain id (EVM). Solana routes to solsafety.ts
 // (GoPlus Solana API + RugCheck — a different composite for different rug physics).

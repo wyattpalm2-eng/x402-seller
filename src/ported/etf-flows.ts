@@ -12,7 +12,7 @@ import { getReceiveAddress } from "../wallet.js";
 import handler from "./etf-flows.handler.cjs";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_ETF_FLOWS = process.env.PRICE_ETF_FLOWS || "$0.05";
+export const PRICE_ETF_FLOWS = process.env.PRICE_ETF_FLOWS || "$0.01";
 
 export const etfFlowsRouter: Router = Router();
 etfFlowsRouter.get("/etf/flows", (req: Request, res: Response) => {

@@ -17,10 +17,10 @@ import { recordSale, priceToUsd } from "./stats.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 
-export const PRICE_TOKEN = process.env.PRICE_ONCHAIN_TOKEN || "$0.005";
-export const PRICE_TRENDING = process.env.PRICE_ONCHAIN_TRENDING || "$0.005";
+export const PRICE_TOKEN = process.env.PRICE_ONCHAIN_TOKEN || "$0.01";
+export const PRICE_TRENDING = process.env.PRICE_ONCHAIN_TRENDING || "$0.01";
 export const PRICE_NEW = process.env.PRICE_ONCHAIN_NEW || "$0.01";
-export const PRICE_DEFI = process.env.PRICE_ONCHAIN_DEFI || "$0.005";
+export const PRICE_DEFI = process.env.PRICE_ONCHAIN_DEFI || "$0.01";
 
 // ─── Allowlists / validators ────────────────────────────────────────────────
 // our slug -> upstream identifiers. Anything NOT in this map is rejected.

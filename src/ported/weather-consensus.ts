@@ -14,7 +14,7 @@ import { getReceiveAddress } from "../wallet.js";
 import handler from "./weather-consensus.handler.cjs";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_WEATHER = process.env.PRICE_WEATHER || "$0.03";
+export const PRICE_WEATHER = process.env.PRICE_WEATHER || "$0.01";
 
 /**
  * Quality gate at the ROUTE layer (the crew's handler stays vendored verbatim):

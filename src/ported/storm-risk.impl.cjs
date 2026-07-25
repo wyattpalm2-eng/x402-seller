@@ -133,11 +133,8 @@ async function getStormRisk(lat, lon) {
   }
   var alertSummary = summaryLines.join('; ') || 'No active alerts at location';
 
-  // Return null (no charge) if calm and no alerts
-  if (alertCount === 0 && windGust < 10) {
-    return null;
-  }
-
+  // Always return the computed result -- calm conditions are a real answer, not a 404.
+  // The prover expects a 200 with data behind the paywall; 404 behind the gate was a bug.
   return {
     storm_risk_score: stormRiskScore,
     alert_count: alertCount,

@@ -12,7 +12,7 @@ import { getReceiveAddress } from "../wallet.js";
 import handler from "./storm-risk.handler.cjs";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_STORM_RISK = process.env.PRICE_STORM_RISK || "$0.04";
+export const PRICE_STORM_RISK = process.env.PRICE_STORM_RISK || "$0.01";
 
 export const stormRiskRouter: Router = Router();
 stormRiskRouter.get("/wx/storm", (req: Request, res: Response) => {

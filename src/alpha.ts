@@ -27,7 +27,7 @@ import { getReceiveAddress } from "./wallet.js";
 import { priceToUsd } from "./stats.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_ALPHA = process.env.PRICE_ALPHA || "$0.08";
+export const PRICE_ALPHA = process.env.PRICE_ALPHA || "$0.01";
 
 // our slug -> GeckoTerminal network id (new_pools feed exists per network).
 const GT_CHAINS: Record<string, string> = {
