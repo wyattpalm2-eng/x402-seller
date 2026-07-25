@@ -1,5 +1,15 @@
-node_modules/
+﻿node_modules/
 .env
 wallet.json
 sales.jsonl
 *.log
+
+# hardening 2026-07-25: operational ledgers + credential-shaped files must never
+# reach this PUBLIC auto-deploying repo. settlements.jsonl records payer tx data.
+settlements.jsonl
+*.jsonl.bak
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
