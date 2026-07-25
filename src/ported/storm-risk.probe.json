@@ -1,0 +1,9 @@
+{
+  "id": "S-016",
+  "route": "GET /wx/storm",
+  "expect402": [
+    "/wx/storm?lat=30.26&lon=-97.74",
+    "/wx/storm?lat=25.76&lon=-80.19"
+  ],
+  "expect400": []
+}
