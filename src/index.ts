@@ -39,7 +39,7 @@ import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { discoveryRouter, ENDPOINTS } from "./discovery.js";
-import { recordSale, priceToUsd, stats } from "./stats.js";
+import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
 import { recordView, markBuyer, funnel } from "./funnel.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -452,6 +452,42 @@ app.use((req, res, next) => {
 // break settlement. (Total outage of all facilitators fails the deploy, and
 // Render then keeps the previous healthy build — the correct failsafe.)
 app.use(paymentMiddleware(routes, resourceServer));
+
+// ─── SETTLEMENT RECEIPTS ─────────────────────────────────────────────────
+// The facilitator reports the settle outcome back to us in the `payment-response` header --
+// the same header src/client.ts decodes to print "Settlement: ...". Until now the server set
+// that header and never looked at it, so a delivery that never settled was indistinguishable
+// from one that did. That is how six real signed authorizations turned into $0.053 "revenue"
+// and 0.000000 USDC on 2026-07-25.
+//
+// This hooks response completion (after the paywall and the handler have run), reads the header
+// we are about to send, and records what actually happened. It is observation only: it never
+// blocks, never mutates the response, and never throws into the request path.
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    try {
+      if (res.statusCode !== 200) return;                 // only delivered calls can settle
+      const routeKey = `${req.method} ${req.path}`;
+      const raw = res.getHeader("payment-response");
+      if (!raw) return void recordSettlement(routeKey, undefined, undefined, "no payment-response header");
+
+      // The header is base64 JSON in x402 v2. Decode defensively -- an unknown shape must be
+      // reported as unknown, never optimistically counted as settled.
+      let payload: any = null;
+      try { payload = JSON.parse(Buffer.from(String(raw), "base64").toString("utf8")); }
+      catch { try { payload = JSON.parse(String(raw)); } catch { /* leave null */ } }
+
+      if (!payload || typeof payload !== "object") {
+        return void recordSettlement(routeKey, undefined, undefined, "payment-response present but undecodable");
+      }
+      const ok = payload.success === true || payload.settled === true;
+      const tx = payload.transaction || payload.txHash || payload.transactionHash;
+      const err = payload.errorReason || payload.error || payload.reason;
+      recordSettlement(routeKey, ok ? true : payload.success === false ? false : undefined, tx, err);
+    } catch { /* never let bookkeeping break a paid response */ }
+  });
+  next();
+});
 
 // Paid handlers. Only run AFTER payment has settled (paywall above).
 app.use(premiumRouter);
