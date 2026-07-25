@@ -125,6 +125,20 @@ function rehydrateSettlements(): void {
  * `success` undefined means the header was absent -> nothing settled that we can see.
  */
 export function recordSettlement(route: string, success: boolean | undefined, txHash?: string, error?: string): void {
+  // THE FIRST ONE. This company has one KPI -- a single real settled payment -- and it has been
+  // $0.00 since it launched. When it finally lands it must be impossible to miss, and it must be
+  // recorded with the tx hash so nobody has to take anyone's word for it later.
+  if (success === true && settlement.settled === 0) {
+    const banner =
+      "\n" + "=".repeat(72) +
+      "\n  FIRST SETTLED PAYMENT. Real USDC moved on-chain for the first time." +
+      "\n  route: " + route +
+      "\n  tx:    " + (txHash || "(no hash returned)") +
+      "\n  Verify independently: USDC balanceOf(payTo) on Base. The chain is the only proof." +
+      "\n" + "=".repeat(72) + "\n";
+    console.log(banner);
+    try { fs.appendFileSync(path.join(__dirname, "..", "FIRST-PAYMENT.md"), banner + "at " + new Date().toISOString() + "\n"); } catch { /* best effort */ }
+  }
   if (success === true) { settlement.settled += 1; settlement.lastTx = txHash; }
   else if (success === false) { settlement.failed += 1; settlement.lastError = error || "settle reported failure"; }
   else { settlement.pending += 1; settlement.lastError = error || "no payment-response header returned"; }

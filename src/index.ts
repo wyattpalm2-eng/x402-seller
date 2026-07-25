@@ -474,8 +474,18 @@ app.use((req, res, next) => {
     try {
       if (res.statusCode !== 200) return;                 // only delivered calls can settle
       const routeKey = `${req.method} ${req.path}`;
-      const raw = res.getHeader("payment-response");
-      if (!raw) return void recordSettlement(routeKey, undefined, undefined, "no payment-response header");
+      // The @x402/express middleware buffers the body, calls processSettlement, and on SUCCESS does
+      // `Object.entries(settleResult.headers).forEach(([k,v]) => res.setHeader(k,v))`. The core
+      // constant is "PAYMENT-RESPONSE" with an "X-PAYMENT-RESPONSE" v1 fallback, so try both --
+      // getHeader is case-insensitive but the x- prefix is a different header entirely.
+      const raw = res.getHeader("payment-response") ?? res.getHeader("x-payment-response");
+      if (!raw) {
+        // "no header" was ambiguous: it could mean settlement never ran, or that we looked in the
+        // wrong place. Record what headers ARE present so the next real payment is diagnostic
+        // instead of another guess. Header NAMES only -- never values, which can carry payer data.
+        const names = Object.keys(res.getHeaders() || {}).sort().join(",").slice(0, 300);
+        return void recordSettlement(routeKey, undefined, undefined, "no settle header; present: [" + names + "]");
+      }
 
       // The header is base64 JSON in x402 v2. Decode defensively -- an unknown shape must be
       // reported as unknown, never optimistically counted as settled.
