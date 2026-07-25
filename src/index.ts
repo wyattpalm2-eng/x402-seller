@@ -27,6 +27,7 @@ import { historyRouter, historyRoutes, historyCatalog, validateLiquidity, startH
 import { alphaRouter, alphaRoutes, alphaCatalog, validateAlpha } from "./alpha.js";
 import { weatherRouter, weatherRoutes, weatherCatalog, validateWeather, gateConsensus } from "./ported/weather-consensus.js";
 import weatherHandler from "./ported/weather-consensus.handler.cjs";
+import { tokenConcentrationRouter, tokenConcentrationRoutes, tokenConcentrationCatalog, validateTokenConcentration } from "./ported/token-concentration.js";
 import { wxAgRouter, wxAgRoutes, wxAgCatalog, validateWxAg } from "./ported/wx-ag.js";
 import { stormRiskRouter, stormRiskRoutes, stormRiskCatalog, validateStormRisk } from "./ported/storm-risk.js";
 import { walletFingerprintRouter, walletFingerprintRoutes, walletFingerprintCatalog, validateWalletFingerprint } from "./ported/wallet-fingerprint.js";
@@ -93,6 +94,7 @@ const CATALOG = [
   ...compositesCatalog,
   ...alphaCatalog,
   ...weatherCatalog,
+  ...tokenConcentrationCatalog,
   ...wxAgCatalog,
   ...stormRiskCatalog,
   ...walletFingerprintCatalog,
@@ -127,6 +129,7 @@ const routes = {
   ...compositesRoutes,
   ...alphaRoutes,
   ...weatherRoutes,
+  ...tokenConcentrationRoutes,
   ...wxAgRoutes,
   ...stormRiskRoutes,
   ...walletFingerprintRoutes,
@@ -461,6 +464,7 @@ app.use((req, res, next) => {
   else if (req.path === "/brief") err = validateBrief(q);
   else if (req.path === "/alpha/launches") err = validateAlpha(q);
   else if (req.path === "/weather/consensus") err = validateWeather(q);
+  else if (req.path.startsWith("/token/concentration/")) err = validateTokenConcentration(q, req.path);
   else if (req.path.startsWith("/wx/ag/")) err = validateWxAg(q, req.path);
   else if (req.path === "/wx/storm") err = validateStormRisk(q, req.path);
   else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
@@ -561,6 +565,7 @@ app.use(screenRouter);
 app.use(compositesRouter);
 app.use(alphaRouter);
 app.use(weatherRouter);
+app.use(tokenConcentrationRouter);
 app.use(wxAgRouter);
 app.use(stormRiskRouter);
 app.use(walletFingerprintRouter);

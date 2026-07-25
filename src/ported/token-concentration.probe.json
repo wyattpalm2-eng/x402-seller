@@ -1,0 +1,12 @@
+{
+  "id": "S-020",
+  "route": "GET /token/concentration/:address",
+  "expect402": [
+    "/token/concentration/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913?chain=base",
+    "/token/concentration/0x4200000000000000000000000000000000000006?chain=base"
+  ],
+  "expect400": [
+    "/token/concentration/invalid-input?chain=base",
+    "/token/concentration/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913?chain=__nope__"
+  ]
+}
