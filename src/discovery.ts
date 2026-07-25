@@ -53,6 +53,12 @@ const P = {
   screen: process.env.PRICE_SCREEN || "$0.03",
   alpha: process.env.PRICE_ALPHA || "$0.08",
   weather: process.env.PRICE_WEATHER || "$0.03",
+  // Crew-ported endpoints. These were live and sellable for a day while being INVISIBLE to every
+  // x402 crawler, because the porter wired index.ts but not this spec — /catalog listed them,
+  // /.well-known/x402.json did not, and the manifest is what directories actually ingest.
+  stormRisk: process.env.PRICE_STORM_RISK || "$0.04",
+  walletFingerprint: process.env.PRICE_WALLET_FINGERPRINT || "$0.05",
+  tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.05",
 };
 
 export interface Endpoint {
@@ -84,6 +90,51 @@ export const ENDPOINTS: Endpoint[] = [
         { token: "BONKFI", address: "0x…", verdict: "ok", risk_score: 10, honeypot: false, top_flag: null, liquidity_usd: 82000, liquidity_trend: "growing", launched: "2026-07-19T12:40:00Z" },
         { token: "SCAMZ", address: "0x…", verdict: "danger", risk_score: 100, honeypot: true, top_flag: "HONEYPOT: live sell simulation FAILED", liquidity_usd: 5400 },
       ],
+    },
+  },
+  {
+    method: "GET", path: "/wx/storm", price: P.stormRisk,
+    description: "STORM RISK for any coordinate on Earth — resolves NOAA/NWS active-alert GeoJSON polygons with real point-in-polygon geometry, blends in wind speed and alert severity, and returns ONE scored risk verdict. Replaces the whole pipeline an agent would otherwise build: fetch the alert feed, parse multi-ring GeoJSON, run point-in-polygon per alert, reconcile severity vocabularies, and merge a second wind source. Independently scored 9/10 by a bot-buyer panel: 'paying $0.04 to instantly bypass complex GeoJSON parsing, point-in-polygon math, and multiple API orchestration is a highly efficient time-saver.' Keyless, no signup, works worldwide (richest inside US NWS coverage). For logistics routing, drone/flight go-no-go, field-ops scheduling and insurance triggers.",
+    input: {
+      lat: { type: "number", required: true, example: "30.26", default: undefined },
+      lon: { type: "number", required: true, example: "-97.74", default: undefined },
+    },
+    output_example: {
+      query: { lat: 30.26, lon: -97.74 },
+      risk: { score: 62, level: "elevated", headline: "1 active severe alert covers this point" },
+      alerts: [{ event: "Severe Thunderstorm Warning", severity: "Severe", urgency: "Expected", certainty: "Likely", containsPoint: true }],
+      wind: { speedKph: 41, gustKph: 67 },
+      computedAt: "2026-07-25T03:16:45Z",
+    },
+  },
+  {
+    method: "GET", path: "/token/risk/{address}", price: P.tokenRisk,
+    description: "COMPOSITE TOKEN RISK SCORE (0-100) for any Base or Ethereum token, computed from five independent on-chain signals and fused into one verdict: holder concentration sampled from real Transfer event logs, Sourcify source-verification status, contract bytecode analysis, DexScreener liquidity + 24h volume + transaction counts, and supply distribution across recent recipients. Collapses 5+ separate API calls and the scoring logic an agent would have to write and maintain into a single request. The address is validated BEFORE the paywall, so a malformed address returns 400 and is never charged.",
+    input: {
+      address: { type: "string", required: true, example: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth"] },
+    },
+    output_example: {
+      query: { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", chain: "base" },
+      token: { name: "USD Coin", symbol: "USDC", decimals: 6 },
+      risk: { score: 8, level: "low", flags: [] },
+      signals: { verified: true, holderConcentrationPct: 12.4, liquidityUsd: 41200000, volume24hUsd: 8800000, bytecodeSizeBytes: 2842 },
+      computedAt: "2026-07-25T03:16:45Z",
+    },
+  },
+  {
+    method: "GET", path: "/wallet/fingerprint/{address}", price: P.walletFingerprint,
+    description: "COMPOSITE WALLET FINGERPRINT (0-100) for any Base or Ethereum address: aggregates native balance, transaction count, contract bytecode (is it an EOA or a contract?), ERC-20 token holdings, and DeFi protocol exposure via DefiLlama into one profile plus a score. Four or more RPC round-trips and the cross-source synthesis, collapsed into one call. Use it to profile a counterparty before trading with them, triage an airdrop list, or check whether an address is a fresh burner or an established participant. Address is validated pre-paywall — a malformed address is a 400, never a charge.",
+    input: {
+      address: { type: "string", required: true, example: "0x4200000000000000000000000000000000000006" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth"] },
+    },
+    output_example: {
+      query: { address: "0x4200000000000000000000000000000000000006", chain: "base" },
+      profile: { isContract: true, txCount: 184220, nativeBalanceEth: 0.0, tokenCount: 12 },
+      defi: { protocolsTouched: 3, topProtocol: "aerodrome" },
+      fingerprint: { score: 71, label: "established contract, high activity" },
+      computedAt: "2026-07-25T03:16:45Z",
     },
   },
   {
