@@ -40,7 +40,7 @@ import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { discoveryRouter, ENDPOINTS } from "./discovery.js";
 import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
-import { recordView, markBuyer, funnel } from "./funnel.js";
+import { recordView, markBuyer, funnel, recordMiss, wantList } from "./funnel.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -269,6 +269,8 @@ app.get("/catalog", freeRateLimit, (_req, res) =>
   res.json({ payTo: PAY_TO, network: NETWORK, facilitator: FACILITATOR_LABEL, endpoints: CATALOG }),
 );
 app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
+// THE WANT LIST: routes real external clients asked for and we do not have. Observed demand.
+app.get("/wanted", freeRateLimit, (_req, res) => res.json(wantList()));
 // Demand funnel: who looked (402) vs who bought. Optionally private: set
 // FUNNEL_KEY and pass ?key=… so visitor IPs aren't world-readable.
 app.get("/funnel", freeRateLimit, (req, res) => {
@@ -539,6 +541,19 @@ async function deliver(
   }
 }
 
+// ─── THE WANT LIST ────────────────────────────────────────────────────────
+// LAST route: anything that matched nothing above is a client asking for something we do not
+// sell. Browsers and vulnerability scanners are filtered out in recordMiss; what remains is an
+// external agent naming a product we do not have. That is the only demand signal here that
+// nobody in this company invented. Read it at GET /wanted.
+app.use((req, res) => {
+  recordMiss(req);
+  res.status(404).json({
+    error: "not_found",
+    detail: "No such endpoint. GET /catalog lists everything we sell.",
+    catalog: "/catalog",
+  });
+});
 app.listen(PORT, () => {
   console.log("");
   console.log("  ┌────────────────────────────────────────────────────────┐");

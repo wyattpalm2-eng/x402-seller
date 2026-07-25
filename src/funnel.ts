@@ -116,6 +116,61 @@ export function markBuyer(req: Request): void {
  * publish and to sync into the crew's vault. This is the real-demand oracle:
  * what actual callers probe (and walk away from) beats any simulated buyer.
  */
+/* ── THE WANT LIST ──────────────────────────────────────────────────────────
+ * Every 404 from a non-browser client is a bot telling us, in its own words, what it came here
+ * for and did not find. That is the only demand signal in this company that nobody invented:
+ * not an Arena score, not a persona's hunch, not a projection on a card -- an actual external
+ * agent reaching for a route that does not exist.
+ *
+ * The crew has been guessing what to build while this evidence went straight to /dev/null.
+ * Nova reads it now. A path asked for by several distinct callers is a product brief.
+ */
+type Want = { path: string; hits: number; callers: Set<string>; agents: Set<string>; firstSeen: string; lastSeen: string };
+const wants = new Map<string, Want>();
+const MAX_WANTS = 400;
+
+export function recordMiss(req: Request): void {
+  try {
+    const p = String(req.path || "").slice(0, 120);
+    if (!p || p === "/" || p === "/favicon.ico") return;
+    // Browsers and scanners hunting for wordpress are noise, not demand.
+    const ua = String(req.headers["user-agent"] || "");
+    if (/Mozilla|Chrome|Safari|Edg\//i.test(ua) && !/bot|node|python|curl|agent/i.test(ua)) return;
+    if (/\.(php|asp|aspx|jsp|env|git|sql|zip)$/i.test(p) || /wp-|phpmyadmin|admin/i.test(p)) return;
+
+    const now = new Date().toISOString();
+    const w = wants.get(p) ?? { path: p, hits: 0, callers: new Set<string>(), agents: new Set<string>(), firstSeen: now, lastSeen: now };
+    w.hits += 1;
+    w.lastSeen = now;
+    const ip = String((req.headers["x-forwarded-for"] as string) || req.ip || "").split(",")[0].trim();
+    if (ip) w.callers.add(ip);
+    if (ua) w.agents.add(ua.slice(0, 60));
+    wants.set(p, w);
+
+    if (wants.size > MAX_WANTS) {
+      // drop the coldest single-hit entry so a scanner cannot evict real signal
+      const coldest = [...wants.values()].filter(x => x.hits === 1).sort((a, b) => a.lastSeen.localeCompare(b.lastSeen))[0];
+      if (coldest) wants.delete(coldest.path);
+    }
+  } catch { /* never let bookkeeping break a 404 */ }
+}
+
+/** What bots asked for and we did not have. Sorted by distinct callers, then hits. */
+export function wantList() {
+  const rows = [...wants.values()]
+    .map(w => ({ path: w.path, hits: w.hits, distinctCallers: w.callers.size, agents: [...w.agents].slice(0, 3), firstSeen: w.firstSeen, lastSeen: w.lastSeen }))
+    .sort((a, b) => b.distinctCallers - a.distinctCallers || b.hits - a.hits)
+    .slice(0, 50);
+  return {
+    note:
+      "Routes external clients requested that do not exist. This is OBSERVED demand -- not an Arena " +
+      "score, not a projection. A path with 2+ distinct callers is a product brief, not a hunch.",
+    tracked: wants.size,
+    strongest: rows.filter(r => r.distinctCallers >= 2).slice(0, 10),
+    all: rows,
+  };
+}
+
 export function demandByEndpoint(): Record<string, { views: number; agent_signal: number }> {
   const out: Record<string, { views: number; agent_signal: number }> = {};
   for (const e of _events) {
