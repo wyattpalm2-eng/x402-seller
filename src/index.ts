@@ -452,31 +452,22 @@ app.delete("/mcp", mcpMethodNotAllowed);
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
 app.use(discoveryRouter);
 
-// Pre-paywall validation: reject malformed paid requests with 400 BEFORE the
-// paywall charges, so a bot never pays for a request that can't succeed.
-// Order matters: /onchain/safety has its own (EVM-only) rules, checked first.
-app.use((req, res, next) => {
-  const q = req.query as Record<string, any>;
-  let err: string | null = null;
-  if (req.path === "/onchain/safety") err = validateSafety(q);
-  else if (req.path === "/onchain/liquidity") err = validateLiquidity(q);
-  else if (req.path.startsWith("/onchain/")) err = validateOnchain(req.path, q);
-  else if (req.path === "/derivs") err = validateDerivs(q);
-  else if (req.path === "/screen") err = validateScreen(q);
-  else if (req.path === "/vet") err = validateVet(q);
-  else if (req.path === "/brief") err = validateBrief(q);
-  else if (req.path === "/alpha/launches") err = validateAlpha(q);
-  else if (req.path === "/weather/consensus") err = validateWeather(q);
-  else if (req.path === "/etf/flows") err = validateEtfFlows(q, req.path);
-  else if (req.path.startsWith("/token/concentration/")) err = validateTokenConcentration(q, req.path);
-  else if (req.path.startsWith("/wx/ag/")) err = validateWxAg(q, req.path);
-  else if (req.path === "/wx/storm") err = validateStormRisk(q, req.path);
-  else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
-  else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
-  if (err) return void res.status(400).json({ error: "bad_request", detail: err });
-  next();
-});
-
+// Request validation lives AFTER the paywall now -- see validateParams below, registered between
+// the payment middleware and the paid handlers. It used to run here, in front of the paywall, with
+// the reasonable-sounding intent "so a bot never pays for a request that can't succeed".
+//
+// The cost was much larger than the benefit. A discovery crawler fetches the URLs listed in our
+// manifest exactly as written, with no query string, and got 400 instead of 402 -- so 8 of our 22
+// endpoints (36% of the catalog) read to every indexer as broken or free. Measured against
+// production: /weather/consensus, /wx/storm, /wx/ag/{lat}/{lon}, /token/risk/{address},
+// /wallet/fingerprint/{address}, /token/concentration/{address}, /onchain/token and /etf/flows.
+// For a business whose only real problem is that nobody can find it, that is an expensive trade.
+//
+// Moving it is safe, and this was checked in the library source rather than assumed:
+// @x402/express/dist/esm/index.mjs:257 does `if (res.statusCode >= 400) { await
+// cancellationDispatcher.cancel({ reason: "handler_failed" }) ... return }` -- so a paid request
+// that fails validation returns 400 and settlement is CANCELLED. The buyer is not charged. The
+// original protective intent is preserved by the library; we were paying for it twice.
 // The paywall. Only the routes listed in `routes` are charged. Startup syncs
 // supported kinds across the REDUNDANT facilitator set — any one advertising
 // this network's "exact" scheme is enough, so a single flaky operator can't
@@ -590,6 +581,32 @@ app.use((req, res, next) => {
       recordSettlement(routeKey, ok ? true : payload.success === false ? false : undefined, tx, err);
     } catch { /* never let bookkeeping break a paid response */ }
   });
+  next();
+});
+
+// Reject malformed paid requests -- but only once the paywall has had its say, so an unpaid
+// request always sees 402 and a crawler can tell that this endpoint exists and costs money.
+// A paid request with bad params still gets a clear 400, and @x402/express cancels settlement on
+// any 4xx, so the buyer is not charged for it.
+app.use((req, res, next) => {
+  const q = req.query as Record<string, any>;
+  let err: string | null = null;
+  if (req.path === "/onchain/safety") err = validateSafety(q);
+  else if (req.path === "/onchain/liquidity") err = validateLiquidity(q);
+  else if (req.path.startsWith("/onchain/")) err = validateOnchain(req.path, q);
+  else if (req.path === "/derivs") err = validateDerivs(q);
+  else if (req.path === "/screen") err = validateScreen(q);
+  else if (req.path === "/vet") err = validateVet(q);
+  else if (req.path === "/brief") err = validateBrief(q);
+  else if (req.path === "/alpha/launches") err = validateAlpha(q);
+  else if (req.path === "/weather/consensus") err = validateWeather(q);
+  else if (req.path === "/etf/flows") err = validateEtfFlows(q, req.path);
+  else if (req.path.startsWith("/token/concentration/")) err = validateTokenConcentration(q, req.path);
+  else if (req.path.startsWith("/wx/ag/")) err = validateWxAg(q, req.path);
+  else if (req.path === "/wx/storm") err = validateStormRisk(q, req.path);
+  else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
+  else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
+  if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
 });
 

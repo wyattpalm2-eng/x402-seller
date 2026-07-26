@@ -326,6 +326,70 @@ function decimalPrice(priceStr: string): string {
   return priceStr.replace(/^\$/, "");
 }
 
+// ─── MAKING THE MANIFEST PAYABLE ────────────────────────────────────────────
+// The manifest used to advertise `{ scheme, network, price: "$0.01", asset: "USDC", payTo }`.
+// A client cannot sign an EIP-3009 authorization from that: there is no token contract address and
+// no atomic amount, so there is nothing to build an EIP-712 domain from. Measured across all 22
+// resources before this change: `amount` missing 22/22, `maxTimeoutSeconds` missing 22/22, `extra`
+// missing 22/22, and `asset` was the literal string "USDC".
+//
+// The live 402 challenge gets every one of these right. So the manifest -- the thing directories
+// actually ingest -- was contradicting the running server, and any indexer that trusted it would
+// have produced an unpayable listing.
+// Derived from NETWORK, never hardcoded. The first version of this pinned the Base MAINNET USDC
+// address as a constant -- and a local run on Base Sepolia (eip155:84532) immediately published
+// that mainnet contract next to a testnet network id. A client trusting the pair would sign an
+// authorization against a token that does not exist on the chain it is transacting on. Caught by
+// booting it rather than by reading it.
+const USDC_BY_NETWORK: Record<string, string> = {
+  "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",   // Base mainnet
+  "eip155:84532": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",  // Base Sepolia
+};
+const USDC_ASSET = USDC_BY_NETWORK[NETWORK] || "";
+const MAX_TIMEOUT_SECONDS = 300;
+
+/** "$0.01" -> "10000" (USDC has 6 decimals). Atomic units are what a signature commits to. */
+function atomicAmount(priceStr: string): string {
+  const usd = Number(priceStr.replace(/^\$/, ""));
+  if (!Number.isFinite(usd)) return "0";
+  return Math.round(usd * 1_000_000).toString();
+}
+
+/** Turn a templated path into a concrete, fetchable example using the endpoint's own declared
+ *  examples. Falls back to a known-good Base address so a crawler always gets a real 402 rather
+ *  than a 400 on a literal "{address}". */
+function concreteExample(e: Endpoint): string {
+  let p = e.path;
+  for (const [name, spec] of Object.entries(e.input || {})) {
+    const ex = (spec as any)?.example ?? (spec as any)?.default;
+    if (ex === undefined || ex === null) continue;
+    p = p.replace(`{${name}}`, String(ex)).replace(`:${name}`, String(ex));
+  }
+  // Anything still templated had no declared example -- use a real USDC address / real coordinates
+  // rather than leaving a placeholder that cannot be fetched.
+  p = p.replace(/\{address\}|:address/g, USDC_BY_NETWORK["eip155:8453"])
+       .replace(/\{lat\}|:lat/g, "40.71")
+       .replace(/\{lon\}|:lon/g, "-74.01")
+       .replace(/\{[^}]+\}/g, "base");
+  return p;
+}
+
+/** An `accepts` entry a client can actually sign against. Mirrors the live 402 exactly. */
+function acceptsEntry(priceStr: string) {
+  return {
+    scheme: "exact",
+    network: NETWORK,
+    amount: atomicAmount(priceStr),
+    // If we ever run on a network whose USDC address we do not know, say "USDC" rather than publish
+    // a confidently wrong contract address. A vague manifest is recoverable; a wrong one is not.
+    asset: USDC_ASSET || "USDC",
+    payTo: getReceiveAddress(),
+    maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
+    extra: { name: "USD Coin", version: "2" },
+    price: priceStr,          // kept for humans and for older readers; `amount` is authoritative
+  };
+}
+
 /** Build the OpenAPI 3.1 discovery document x402scan requires at GET /openapi.json. */
 function buildOpenApi(base: string) {
   const paths: Record<string, any> = {};
@@ -404,15 +468,27 @@ discoveryRouter.get(["/.well-known/x402.json", "/.well-known/x402"], (req: Reque
     asset: "USDC",
     payTo: getReceiveAddress(),
     facilitator: FACILITATOR,
-    resources: ENDPOINTS.map((e) => ({
-      resource: `${base}${e.path}`,
-      method: e.method,
-      accepts: [{ scheme: "exact", network: NETWORK, price: e.price, asset: "USDC", payTo: getReceiveAddress() }],
-      description: e.description,
-      mimeType: "application/json",
-      input: e.input,
-      output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
-    })),
+    resources: ENDPOINTS.map((e) => {
+      // Path-param endpoints were published as literal templates -- "/wx/ag/{lat}/{lon}". A crawler
+      // fetches the `resource` URL exactly as written, so those entries were unusable, and per
+      // bazaar.md an entry with no routeTemplate means "treat the concrete URL as the resource",
+      // which would make every distinct address its own catalog record. So: `resource` is now a
+      // real, fetchable example that returns a proper 402, and `routeTemplate` carries the pattern.
+      const isTemplated = /\{.+\}|\/:/.test(e.path);
+      const example = isTemplated ? concreteExample(e) : e.path;
+      return {
+        type: "http",
+        x402Version: 2,
+        resource: `${base}${example}`,
+        ...(isTemplated ? { routeTemplate: `${base}${e.path}` } : {}),
+        method: e.method,
+        accepts: [acceptsEntry(e.price)],
+        description: e.description,
+        mimeType: "application/json",
+        input: e.input,
+        output_example: e.output_example.source ? { ...e.output_example, source: "x402-seller" } : e.output_example,
+      };
+    }),
   });
 });
 
