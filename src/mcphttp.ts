@@ -68,7 +68,7 @@ function buildServer(): McpServer {
 
   server.tool(
     "launch_radar",
-    "Discover what just launched AND rug-screen it in one call: fresh token launches ranked safest-first, each with a verdict (a clean contract with unlocked LP is caution, not clear — most fresh rugs are liquidity pulls). The proactive 'safe alpha' feed. FREE demo (shared daily budget).",
+    "Discover what just launched AND rug-screen it in one call: fresh token launches ranked by liquidity depth (deepest first), with a per-token rug verdict, each with a verdict (a clean contract with unlocked LP is caution, not clear — most fresh rugs are liquidity pulls). The proactive 'safe alpha' feed. FREE demo (shared daily budget).",
     { chain: z.enum(CHAINS).default("base") },
     async ({ chain }) => {
       if (!demoAllowedFor("launch_radar")) return overBudget();
@@ -134,7 +134,7 @@ function buildServer(): McpServer {
         base_url: BASE_URL,
         keyless: "no signup, no API key — pay per call in USDC on Base via x402",
         flagship: {
-          "GET /alpha/launches": "$0.08 — launch radar: discover + rug-screen fresh launches, ranked safest-first",
+          "GET /alpha/launches": "$0.08 — launch radar: discover + rug-screen fresh launches, ranked by liquidity depth (deepest first), with a per-token rug verdict",
           "GET /vet": "$0.05 — one-token go/no-go",
           "GET /onchain/safety": "$0.03 — composite rug score (static + live sim)",
           "GET /onchain/liquidity": "$0.01 — liquidity-drain detector",

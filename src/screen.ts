@@ -5,7 +5,7 @@
  *
  * "Here's my watchlist / the newest launches — which ones aren't rugs?"
  * Runs the full contract-security check on up to 8 tokens IN PARALLEL and
- * returns them sorted safest-first, each with verdict + risk score, plus a
+ * returns them in the order you asked, each with verdict + risk score, plus a
  * summary count. One paid call replaces N lookups + writing the merge/sort
  * logic + burning the agent's own tokens reconciling them.
  *
@@ -49,9 +49,16 @@ export async function screenTokens(chainKey: string, addresses: string[]) {
   const reports = await Promise.all(
     valid.map((a) => safetyReport(chainKey, a).catch(() => null)),
   );
+  // ORDERING CLAIM WITHDRAWN 2026-07-26.
+  // This sorted ascending by risk_score and the endpoint sold the result as "sorted safest-first". On the
+  // 881-row graded ledger the score is inverted: risk_score 0 rugged 80.2% of the time (n=121)
+  // while risk_score 60 rugged 25.3% (n=158). So position 1 -- the token this endpoint told a buyer
+  // was safest -- was the MOST likely rug in the batch. Sorting by a signal known to point the wrong
+  // way is worse than not sorting: it manufactures false confidence in a specific pick.
+  // Until the scorer is recalibrated, return the batch in the order it was ASKED for, and let the
+  // per-token verdict speak for itself. Restore an ordering only when it is backed by the data.
   const results = reports
     .filter(Boolean)
-    .sort((a: any, b: any) => (a.risk_score ?? 99) - (b.risk_score ?? 99))
     .map((r: any) => ({
       address: r.address,
       symbol: r.token?.symbol ?? null,
@@ -81,7 +88,7 @@ screenRouter.get("/screen", (req: Request, res: Response) => {
 export const screenRoutes = {
   "GET /screen": {
     accepts: [{ scheme: "exact", price: PRICE_SCREEN, network: NETWORK, payTo: getReceiveAddress() }],
-    description: "Batch rug/safety screen: up to 8 tokens in one call, sorted safest-first + summary",
+    description: "Batch rug/safety screen: up to 8 tokens in one call, per-token verdicts (unordered) + summary",
     mimeType: "application/json",
   },
 };
@@ -91,6 +98,6 @@ export const screenCatalog = [
     route: "GET /screen",
     price: PRICE_SCREEN,
     params: "?chain=base&addresses=0x..,0x..",
-    desc: "Batch safety screen up to 8 tokens: verdict + risk each, sorted safest-first, with a clear/caution/avoid summary",
+    desc: "Batch safety screen up to 8 tokens: verdict + risk each, per-token verdicts (unordered), with a clear/caution/avoid summary",
   },
 ];

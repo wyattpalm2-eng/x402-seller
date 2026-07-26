@@ -94,7 +94,11 @@ async function checkHolderConcentration(chain, address) {
     // Query recent logs -- try latest 10000 blocks for transfers
     const latestBlock = await rpc(chain, "eth_blockNumber", []);
     const blockNum = parseInt(latestBlock, 16);
-    const fromBlock = "0x" + Math.max(0, blockNum - 50000).toString(16);
+    // Public Base RPCs reject anything beyond ~100 blocks with "Archive requests require a personal
+  // token" — verified: 50000/10000/1000/500 all error, 100 succeeds. Requesting 50000 meant this
+  // query ALWAYS threw, so the holder signal advertised at 25/100 weight never once ran.
+  const LOG_LOOKBACK_BLOCKS = 100;
+  const fromBlock = "0x" + Math.max(0, blockNum - LOG_LOOKBACK_BLOCKS).toString(16);
 
     const logs = await rpc(chain, "eth_getLogs", [{
       address: address,
@@ -143,7 +147,12 @@ async function checkHolderConcentration(chain, address) {
       })),
     };
   } catch (e) {
-    return { transferCount: 0, holderEstimate: 0, concentrationRatio: 0, topRecipients: [], error: e.message };
+    // A FAILED MEASUREMENT IS NOT A MEASUREMENT OF ZERO.
+    // This used to return transferCount:0, and the scorer then added +10 ("low transfer count")
+    // and another +10 ("no transfers at all") — a constant +20 and a "dead_token" label on EVERY
+    // token, because the log query always failed. `available:false` lets the scorer exclude the
+    // signal instead of inventing risk from data it never got.
+    return { transferCount: null, holderEstimate: null, concentrationRatio: null, topRecipients: [], available: false, error: e.message };
   }
 }
 

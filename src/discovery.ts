@@ -19,7 +19,7 @@ const NAME = "x402-seller";
 const DESCRIPTION =
   "Rug protection and decision-ready intelligence for autonomous trading agents. Keyless by design: " +
   "no signup, no API key — pay a cent per request in USDC (x402). The /alpha/launches LAUNCH RADAR " +
-  "discovers what just launched AND rug-screens every candidate in one call, ranked safest-first — the " +
+  "discovers what just launched AND rug-screens every candidate in one call, ranked per-token verdicts — the " +
   "proactive 'give me safe alpha' call. /vet gives a single-token go/no-go " +
   "in ONE call by fusing a COMPOSITE rug score (GoPlus static analysis + a LIVE Honeypot.is buy/sell " +
   "simulation + serial-rugger check) with our SELF-COLLECTED liquidity-drain trend — a rug-in-progress " +
@@ -84,7 +84,7 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/alpha/launches", price: P.alpha,
-    description: "LAUNCH RADAR — one call discovers what just launched AND rug-screens every candidate through the composite score (static + live buy/sell simulation, or the Solana dual-engine) + liquidity, returning a ranked safest-first shortlist with a per-token verdict. Replaces 10+ free-API calls and the coordination logic an agent would build: aggregating launch feeds, running per-candidate honeypot simulations, computing the composite risk score, reconciling free sources, and ranking by safety. The proactive 'give me safe alpha' endpoint for launch-sniping agents.",
+    description: "LAUNCH RADAR — one call discovers what just launched AND rug-screens every candidate through the composite score (static + live buy/sell simulation, or the Solana dual-engine) + liquidity, returning a ranked per-token verdicts shortlist with a per-token verdict. Replaces 10+ free-API calls and the coordination logic an agent would build: aggregating launch feeds, running per-candidate honeypot simulations, computing the composite risk score, reconciling free sources, and ranking by safety. The proactive 'give me safe alpha' endpoint for launch-sniping agents.",
     input: { chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "solana", "bsc", "polygon", "arbitrum", "optimism"] } },
     output_example: {
       chain: "base", headline: "2 of 10 fresh launches look clear — safest: BONKFI",
@@ -302,7 +302,7 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/screen", price: P.screen,
-    description: "ANSWER: batch rug/safety screen. Give a chain and up to 8 token addresses; get each token's verdict + risk score sorted safest-first, plus a clear/caution/avoid summary. Screen a watchlist or the newest launches in one call.",
+    description: "ANSWER: batch rug/safety screen. Give a chain and up to 8 token addresses; get each token's verdict + risk score per-token verdicts (unordered), plus a clear/caution/avoid summary. Screen a watchlist or the newest launches in one call.",
     input: {
       addresses: { type: "string", required: true, example: "0x6982508145454ce325ddbe47a25d4ec3d2311933,0x4200000000000000000000000000000000000006" },
       chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "bsc", "polygon", "arbitrum", "optimism"] },

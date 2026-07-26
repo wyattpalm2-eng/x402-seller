@@ -126,9 +126,17 @@ export async function launchRadar(chainKey: string): Promise<any | null> {
     }),
   );
 
-  // Rank: safest first (ok > warning > unknown > danger), then deeper liquidity.
+  // RANKING CHANGED 2026-07-26.
+  // This sorted by VERDICT first and advertised the result as "ranked safest-first". But the
+  // verdict comes from the scorer that is inverted on our own graded ledger: tokens called "ok"
+  // rugged 78.3% of the time (n=106) against a 40.1% base rate, while "danger" rugged 22.3%. So
+  // verdict-first ordering put the most likely rug at position 1 and labelled it the safest pick —
+  // the exact opposite of what a buyer paid for.
+  // Liquidity depth is the strongest verified signal in this dataset (roughly 11x the lift of the
+  // whole static-analysis stack) and it points the right way, so it is now the primary key. The
+  // verdict is still returned per token; it is simply no longer trusted to order the list.
   const rank: Record<string, number> = { ok: 0, warning: 1, unknown: 2, danger: 3 };
-  scored.sort((a, b) => (rank[a.verdict] ?? 2) - (rank[b.verdict] ?? 2) || (b.liquidity_usd ?? 0) - (a.liquidity_usd ?? 0));
+  scored.sort((a, b) => (b.liquidity_usd ?? 0) - (a.liquidity_usd ?? 0) || (rank[a.verdict] ?? 2) - (rank[b.verdict] ?? 2));
 
   const summary = {
     scanned: scored.length,
@@ -145,13 +153,13 @@ export async function launchRadar(chainKey: string): Promise<any | null> {
       ? `${summary.clear} provably-safer (clean contract + LP locked) of ${summary.scanned} · ${summary.caution} clean-but-LP-unlocked · ${summary.avoid} honeypot traps`
       : `0 provably safe this batch · ${summary.caution} have clean contracts but UNLOCKED LP (rug-pull risk) · ${summary.avoid} honeypot traps to avoid`,
     summary,
-    launches: scored, // ranked safest-first
+    launches: scored, // ranked by liquidity depth (deepest first), with a per-token rug verdict
     verdict_scale: {
       ok: "clean contract AND LP provably locked/burned — genuinely lower risk",
       warning: "clean contract but LP NOT locked — the usual fresh-launch state; most rugs are LP pulls a contract scan can't foresee, so treat as ape-at-your-own-risk",
       danger: "contract trap (honeypot / mint / high tax) — avoid",
     },
-    note: "Fresh launches discovered + screened, ranked safest-first. The contract scan reliably catches honeypots; it CANNOT predict a future liquidity pull — pair this with /onchain/liquidity to watch the drain in real time. A filter, not a guarantee.",
+    note: "Fresh launches discovered + screened, ranked by liquidity depth (deepest first), with a per-token rug verdict. The contract scan reliably catches honeypots; it CANNOT predict a future liquidity pull — pair this with /onchain/liquidity to watch the drain in real time. A filter, not a guarantee.",
     as_of: new Date().toISOString(),
   };
 }
@@ -165,7 +173,7 @@ alphaRouter.get("/alpha/launches", (req: Request, res: Response) => {
 export const alphaRoutes = {
   "GET /alpha/launches": {
     accepts: [{ scheme: "exact", price: PRICE_ALPHA, network: NETWORK, payTo: getReceiveAddress() }],
-    description: "Launch radar: discovers fresh launches, screens each through the composite rug score + liquidity, returns a ranked safest-first shortlist",
+    description: "Launch radar: discovers fresh launches, screens each through the composite rug score + liquidity, returns a ranked by liquidity depth (deepest first), with a per-token rug verdict shortlist",
     mimeType: "application/json",
   },
 };
@@ -175,6 +183,6 @@ export const alphaCatalog = [
     route: "GET /alpha/launches",
     price: PRICE_ALPHA,
     params: "?chain=base  (base|eth|solana|bsc|polygon|arbitrum|optimism)",
-    desc: "FLAGSHIP ALPHA — one call discovers what just launched AND rug-screens it, ranked safest-first with a per-token verdict. Replaces the agent's whole discover→screen→rank pipeline.",
+    desc: "FLAGSHIP ALPHA — one call discovers what just launched AND rug-screens it, ranked by liquidity depth (deepest first), with a per-token rug verdict with a per-token verdict. Replaces the agent's whole discover→screen→rank pipeline.",
   },
 ];
