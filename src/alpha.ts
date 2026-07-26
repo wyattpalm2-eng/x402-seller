@@ -183,6 +183,6 @@ export const alphaCatalog = [
     route: "GET /alpha/launches",
     price: PRICE_ALPHA,
     params: "?chain=base  (base|eth|solana|bsc|polygon|arbitrum|optimism)",
-    desc: "FLAGSHIP ALPHA — one call discovers what just launched AND rug-screens it, ranked by liquidity depth (deepest first), with a per-token rug verdict with a per-token verdict. Replaces the agent's whole discover→screen→rank pipeline.",
+    desc: "FLAGSHIP ALPHA — one call discovers what just launched AND rug-screens it, ranked by liquidity depth (deepest first), with a per-token rug verdict. Replaces the agent's whole discover→screen→rank pipeline.",
   },
 ];

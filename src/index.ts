@@ -495,13 +495,29 @@ app.use((req, res, next) => {
 // "delivered but never settled" backlog came from; the deliveries were partly our own phantom.
 // No response body is sent for HEAD, so paid DATA never leaked -- but the compute and the
 // accounting both did. 405 is the honest answer: x402 payment is defined for GET here.
+// 2026-07-26: the guard below was written with exact string equality and that was not enough.
+// Express matches routes CASE-INSENSITIVELY and tolerates a trailing slash, so `HEAD /price/`,
+// `HEAD /Price` and `HEAD /PRICE` all missed this check, missed the x402 route table (which is
+// keyed "GET /price" and matched verb-sensitively), got dispatched HEAD->GET by Express, ran the
+// paid handler and called recordSale(). Verified against production: /price -> 405, but /price/,
+// /Price, /PRICE and /onchain/Trending all returned 200.
+//
+// The cost was not leaked data -- HEAD sends no body -- it was a fabricated business. Every
+// crawler and uptime monitor on the internet minted a "paid delivery", which is where all 40
+// lifetime deliveries and the entire "delivered but never settled" backlog came from. The crew
+// then spent days diagnosing PayAI over a payment that had never happened.
+//
+// Normalize both sides the way the router does before comparing.
+const normPath = (s: string) => s.toLowerCase().replace(/\/+$/, "") || "/";
+
 app.use((req, res, next) => {
   if (req.method !== "HEAD") return next();
-  const p = req.path;
+  const p = normPath(req.path);
   // reuse the existing PAID_PATHS set; handle both exact routes and /:param routes
   const isPaid = [...PAID_PATHS].some((rp) => {
-    const base = rp.split("/:")[0];
-    return rp.includes("/:") ? p.startsWith(base + "/") : p === rp;
+    const r = normPath(rp);
+    const base = normPath(rp.split("/:")[0]);
+    return rp.includes("/:") ? (p === base || p.startsWith(base + "/")) : p === r;
   });
   if (!isPaid) return next();
   res.setHeader("Allow", "GET");
@@ -526,8 +542,26 @@ app.use(paymentMiddleware(routes, resourceServer));
 app.use((req, res, next) => {
   res.on("finish", () => {
     try {
-      if (res.statusCode !== 200) return;                 // only delivered calls can settle
+      const paid = !!(req.get("x-payment") || req.get("payment-signature"));
       const routeKey = `${req.method} ${req.path}`;
+
+      // This observer was structurally incapable of ever reporting a settlement FAILURE, which is
+      // why settlement.failed sat at 0 forever and lastError could only ever say "no settle header".
+      // @x402/express turns every settle failure into a non-200 (settle failed -> 402,
+      // FacilitatorResponseError -> 502, anything else -> 402 with an empty body), and the old code
+      // returned early on any non-200. So the one case worth recording was the one case excluded.
+      // The crew read that permanently-fixed string, concluded "PayAI is broken", and drafted a bug
+      // report against a facilitator we have never once actually reached.
+      if (res.statusCode !== 200) {
+        if (paid && (res.statusCode === 402 || res.statusCode === 502)) {
+          recordSettlement(routeKey, false, undefined,
+            `settlement rejected: the payment verified but the facilitator did not settle (HTTP ${res.statusCode} returned to the buyer)`);
+        }
+        return;                                            // otherwise nothing was delivered
+      }
+      // A 200 with no payment header at all is not a sale. Before the HEAD normalization fix this
+      // fired constantly on crawler traffic and invented the entire delivery backlog.
+      if (!paid) return;
       // The @x402/express middleware buffers the body, calls processSettlement, and on SUCCESS does
       // `Object.entries(settleResult.headers).forEach(([k,v]) => res.setHeader(k,v))`. The core
       // constant is "PAYMENT-RESPONSE" with an "X-PAYMENT-RESPONSE" v1 fallback, so try both --
