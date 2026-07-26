@@ -44,9 +44,16 @@ export const wxAgCatalog = [
  *  reqPath is passed for path-param routes (the segment is not in req.query). */
 export function validateWxAg(q: Record<string, any>, reqPath?: string): string | null {
   void q; void reqPath;
-  const seg0 = String(reqPath || "").slice("/wx/ag/".length).split("/")[0];
-  if (!seg0) return "usage: /wx/ag/:lat/:lon";
-  const seg1 = String(reqPath || "").slice("/wx/ag/".length).split("/")[0];
-  if (!seg1) return "usage: /wx/ag/:lat/:lon";
+  // Both segments were previously read with `.split("/")[0]` -- byte-identical expressions, so LON
+  // was never validated and garbage coordinates reached a handler that then invented numbers.
+  // (Root cause was porter.js's generator, fixed there too so no future port repeats it.)
+  const parts = String(reqPath || "").slice("/wx/ag/".length).split("/");
+  const seg0 = parts[0];
+  const seg1 = parts[1];
+  if (!seg0 || !seg1) return "usage: /wx/ag/:lat/:lon  (e.g. /wx/ag/40.71/-74.00)";
+  const latN = Number(seg0), lonN = Number(seg1);
+  if (!isFinite(latN) || !isFinite(lonN)) return "lat and lon must be numbers. usage: /wx/ag/40.71/-74.00";
+  if (latN < -90 || latN > 90) return "lat must be between -90 and 90";
+  if (lonN < -180 || lonN > 180) return "lon must be between -180 and 180";
   return null;
 }

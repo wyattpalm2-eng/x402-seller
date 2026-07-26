@@ -14,17 +14,18 @@ const OPENMETEO_BASE = 'https://api.open-meteo.com/v1/forecast';
 const NWS_ALERTS = 'https://api.weather.gov/alerts/active';
 
 // --- Point-in-polygon (ray casting) for NWS polygon containment ---
-function pointInPolygon(lat, lon, polygon) {
-  // polygon is array of [lon, lat] pairs (GeoJSON ring)
-  var inside = false;
-  for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    var xi = polygon[i][0], yi = polygon[i][1];
-    var xj = polygon[j][0], yj = polygon[j][1];
-    var intersect = ((yi > lon) !== (yj > lon)) &&
-      (lat < (xj - xi) * (lon - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
+// REMOVED 2026-07-26: this function had lat and lon transposed and rejected EVERY polygon alert.
+// It tested `yi > lon` (a latitude against a longitude) and `lat < ... + xi` (a latitude against a
+// longitude) while the vertices are GeoJSON [lon, lat]. A point at the exact centre of a box
+// returned false. Live proof: NWS reported an active Special Weather Statement at 29.3870,-81.4620
+// while this endpoint returned {"alert_count":0,"alert_summary":"No active alerts at location"} --
+// it sold "no storm" during a real storm, for money.
+//
+// It was also unnecessary. The request is already `alerts/active?point=lat,lon`, which NWS filters
+// SERVER-SIDE, so every returned feature by definition contains the point. The correct behaviour is
+// to trust that filtering. Local containment maths was pure risk with no upside.
+function pointInPolygon() {
+  throw new Error("pointInPolygon removed: NWS ?point= filters server-side; local containment was transposed and wrong");
 }
 
 // --- Severity weight mapping ---
@@ -51,36 +52,13 @@ async function getStormRisk(lat, lon) {
   try { alertsData = JSON.parse(alertsRes.body); } catch (e) { throw new Error('Failed to parse NWS response'); }
 
   // 2. Filter alerts by point-in-polygon containment
-  var containedAlerts = [];
+  // NWS has ALREADY filtered these server-side via `alerts/active?point=lat,lon`, so every feature
+  // returned contains this point by definition. The old code re-checked containment locally with a
+  // transposed ray-cast and threw away every polygon alert as a result -- reporting "no active
+  // alerts" while a Special Weather Statement was live at those exact coordinates. Trusting the
+  // upstream filter is both correct and simpler; there was never anything to gain by re-deriving it.
   var features = alertsData.features || [];
-  for (var i = 0; i < features.length; i++) {
-    var f = features[i];
-    var props = f.properties || {};
-    var geom = f.geometry;
-
-    if (geom && geom.type === 'Polygon') {
-      // Check containment in first ring
-      var ring = geom.coordinates[0];
-      // GeoJSON ring is [lon,lat] but our point is [lat,lon], convert
-      var polyPoints = ring.map(function(c) { return [c[0], c[1]]; });
-      if (pointInPolygon(lat, lon, polyPoints)) {
-        containedAlerts.push(props);
-      }
-    } else if (geom && geom.type === 'MultiPolygon') {
-      // Check all polygons in multipolygon
-      for (var mp = 0; mp < geom.coordinates.length; mp++) {
-        var mpRing = geom.coordinates[mp][0];
-        var mpPoints = mpRing.map(function(c) { return [c[0], c[1]]; });
-        if (pointInPolygon(lat, lon, mpPoints)) {
-          containedAlerts.push(props);
-          break;
-        }
-      }
-    } else {
-      // No geometry -- zone/county based alert, includes our area
-      containedAlerts.push(props);
-    }
-  }
+  var containedAlerts = features.map(function (f) { return (f && f.properties) || {}; });
 
   // 3. Compute alert severity stats
   var alertCount = containedAlerts.length;

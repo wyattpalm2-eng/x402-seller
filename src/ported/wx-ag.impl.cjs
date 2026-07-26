@@ -80,9 +80,15 @@ async function getAgMetrics(lat, lon) {
     var soilTemp = h.soil_temperature_0_to_7cm || [];
     var et0 = h.et0_fao_evapotranspiration || [];
 
-    // Compute 24h aggregates
-    var tempAvg = temps.length > 0 ? temps.slice(0, 24).reduce(function(a, b) { return a + b; }, 0) / Math.min(24, temps.length) : 20;
-    var humAvg = humidity.length > 0 ? humidity.slice(0, 24).reduce(function(a, b) { return a + b; }, 0) / Math.min(24, humidity.length) : 50;
+    // NO FABRICATED FALLBACKS. These used to default to 20C / 50% / 0kmh when the upstream series
+    // was missing, so /wx/ag/abc/def and /wx/ag/999/999 both returned a CHARGED 200 carrying
+    // invented weather: {"ag_risk_score":40,"temp_avg_c":20,"humidity_avg_pct":50,...}. Open-Meteo
+    // 400s on bad coordinates, fetchWeather parses the error body anyway, hourly comes back
+    // undefined, and every default fired. Selling a confident number computed from nothing is the
+    // worst failure this product can have -- returning null makes serve() answer an UNCHARGED 404.
+    if (!temps.length || !humidity.length) return null;
+    var tempAvg = temps.slice(0, 24).reduce(function(a, b) { return a + b; }, 0) / Math.min(24, temps.length);
+    var humAvg = humidity.slice(0, 24).reduce(function(a, b) { return a + b; }, 0) / Math.min(24, humidity.length);
     var windAvg = wind.length > 0 ? wind.slice(0, 24).reduce(function(a, b) { return a + b; }, 0) / Math.min(24, wind.length) : 0;
     var precipSum = precip.slice(0, 24).reduce(function(a, b) { return a + b; }, 0);
     var soilMoistAvg = soilMoist.length > 0 ? soilMoist.slice(0, 24).reduce(function(a, b) { return a + b; }, 0) / Math.min(24, soilMoist.length) : 0;
