@@ -37,31 +37,31 @@ const WHY_PAY = [
 ];
 
 const P = {
-  price: process.env.PRICE_CRYPTO || "$0.001",
-  stock: process.env.PRICE_STOCK || "$0.002",
-  markets: process.env.PRICE_MARKETS || "$0.005",
+  price: process.env.PRICE_CRYPTO || "$0.01",
+  stock: process.env.PRICE_STOCK || "$0.01",
+  markets: process.env.PRICE_MARKETS || "$0.01",
   signal: process.env.PRICE_SIGNAL || "$0.01",
-  token: process.env.PRICE_ONCHAIN_TOKEN || "$0.005",
-  trending: process.env.PRICE_ONCHAIN_TRENDING || "$0.005",
+  token: process.env.PRICE_ONCHAIN_TOKEN || "$0.01",
+  trending: process.env.PRICE_ONCHAIN_TRENDING || "$0.01",
   newp: process.env.PRICE_ONCHAIN_NEW || "$0.01",
-  defi: process.env.PRICE_ONCHAIN_DEFI || "$0.005",
-  safety: process.env.PRICE_ONCHAIN_SAFETY || "$0.03",
+  defi: process.env.PRICE_ONCHAIN_DEFI || "$0.01",
+  safety: process.env.PRICE_ONCHAIN_SAFETY || "$0.01",
   liquidity: process.env.PRICE_ONCHAIN_LIQUIDITY || "$0.01",
   derivs: process.env.PRICE_DERIVS || "$0.01",
-  vet: process.env.PRICE_VET || "$0.05",
-  brief: process.env.PRICE_BRIEF || "$0.03",
-  screen: process.env.PRICE_SCREEN || "$0.03",
-  alpha: process.env.PRICE_ALPHA || "$0.08",
-  weather: process.env.PRICE_WEATHER || "$0.03",
+  vet: process.env.PRICE_VET || "$0.01",
+  brief: process.env.PRICE_BRIEF || "$0.01",
+  screen: process.env.PRICE_SCREEN || "$0.01",
+  alpha: process.env.PRICE_ALPHA || "$0.01",
+  weather: process.env.PRICE_WEATHER || "$0.01",
   // Crew-ported endpoints. These were live and sellable for a day while being INVISIBLE to every
   // x402 crawler, because the porter wired index.ts but not this spec — /catalog listed them,
   // /.well-known/x402.json did not, and the manifest is what directories actually ingest.
-  agMetrics: process.env.PRICE_AG_METRICS || "$0.03",
-  stormRisk: process.env.PRICE_STORM_RISK || "$0.04",
-  walletFingerprint: process.env.PRICE_WALLET_FINGERPRINT || "$0.05",
-  tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.05",
-  tokenConcentration: process.env.PRICE_TOKEN_CONCENTRATION || "$0.05",
-  etfFlows: process.env.PRICE_ETF_FLOWS || "$0.05",
+  agMetrics: process.env.PRICE_AG_METRICS || "$0.01",
+  stormRisk: process.env.PRICE_STORM_RISK || "$0.01",
+  walletFingerprint: process.env.PRICE_WALLET_FINGERPRINT || "$0.01",
+  tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.01",
+  tokenConcentration: process.env.PRICE_TOKEN_CONCENTRATION || "$0.01",
+  etfFlows: process.env.PRICE_ETF_FLOWS || "$0.01",
 };
 
 export interface Endpoint {
@@ -233,7 +233,7 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/onchain/defi", price: P.defi,
-    description: "Chain TVL and top DeFi protocols by TVL on that chain.",
+    description: "One call returns the full DeFi landscape for a chain -- total TVL, top protocols ranked by TVL with category breakdowns (lending, DEX, restaking), and 7-day TVL trend. Aggregates DefiLlama across all protocols on the chain so a bot avoids querying DefiLlama's 4+ endpoints per chain, parsing the protocol list, and computing rankings itself.",
     input: { chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "solana", "bsc", "polygon", "arbitrum", "optimism"] } },
     output_example: { chain: "base", tvl_usd: 4527177464, top_protocols: [{ name: "Aave V3", category: "Lending", tvl_on_chain_usd: 900000000 }], source: "defillama" },
   },
