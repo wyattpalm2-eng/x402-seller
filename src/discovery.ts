@@ -84,7 +84,7 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/alpha/launches", price: P.alpha,
-    description: "LAUNCH RADAR — one call discovers what just launched AND rug-screens every candidate through the composite score (static + live buy/sell simulation, or the Solana dual-engine) + liquidity, returning a ranked safest-first shortlist with a per-token verdict. Replaces an agent's whole discover→screen→rank pipeline (10+ calls). The proactive 'give me safe alpha' call for launch-sniping agents.",
+    description: "LAUNCH RADAR — one call discovers what just launched AND rug-screens every candidate through the composite score (static + live buy/sell simulation, or the Solana dual-engine) + liquidity, returning a ranked safest-first shortlist with a per-token verdict. Replaces 10+ free-API calls and the coordination logic an agent would build: aggregating launch feeds, running per-candidate honeypot simulations, computing the composite risk score, reconciling free sources, and ranking by safety. The proactive 'give me safe alpha' endpoint for launch-sniping agents.",
     input: { chain: { type: "string", required: false, default: "base", enum: ["base", "eth", "solana", "bsc", "polygon", "arbitrum", "optimism"] } },
     output_example: {
       chain: "base", headline: "2 of 10 fresh launches look clear — safest: BONKFI",
