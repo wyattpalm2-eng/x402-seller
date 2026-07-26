@@ -389,7 +389,11 @@ function baseUrl(req: Request): string {
 
 export const discoveryRouter: Router = Router();
 
-discoveryRouter.get("/.well-known/x402.json", (req: Request, res: Response) => {
+// Serve BOTH spellings of each well-known path. The .json extension is not universal across x402
+// clients, and a real crawler (agent-tools.cloud-crawler/0.1) hit /.well-known/x402 five times and
+// got a 404 every time — it was trying to index us and could not. Registering the array on the same
+// handler is the whole fix; an alias route elsewhere does not reach this router.
+discoveryRouter.get(["/.well-known/x402.json", "/.well-known/x402"], (req: Request, res: Response) => {
   const base = baseUrl(req);
   res.json({
     x402Version: 2,
@@ -412,7 +416,7 @@ discoveryRouter.get("/.well-known/x402.json", (req: Request, res: Response) => {
   });
 });
 
-discoveryRouter.get("/.well-known/agent.json", (req: Request, res: Response) => {
+discoveryRouter.get(["/.well-known/agent.json", "/.well-known/agent"], (req: Request, res: Response) => {
   const base = baseUrl(req);
   res.json({
     name: NAME,

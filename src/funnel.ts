@@ -129,10 +129,25 @@ type Want = { path: string; hits: number; callers: Set<string>; agents: Set<stri
 const wants = new Map<string, Want>();
 const MAX_WANTS = 400;
 
+/**
+ * Paths we actually serve. A 404 on one of these is a METHOD mismatch (OPTIONS/POST preflight),
+ * not a bot asking for a product we lack — and recording it as demand is actively harmful: the
+ * want list drove Nova toward speccing `/price`, an endpoint that has existed since day one.
+ * Set by index.ts at startup so this stays in sync with the real route table.
+ */
+let servedPaths: string[] = [];
+export function setServedPaths(paths: string[]): void {
+  servedPaths = paths.map((p) => p.split("/:")[0]).filter(Boolean);
+}
+
 export function recordMiss(req: Request): void {
   try {
     const p = String(req.path || "").slice(0, 120);
     if (!p || p === "/" || p === "/favicon.ico") return;
+    // Only GET can be a genuine "I wanted this product" signal. A 404 from OPTIONS/POST/PUT on a
+    // route we serve is a preflight or a client error, and counting it as demand invents customers.
+    if (String(req.method || "GET").toUpperCase() !== "GET") return;
+    if (servedPaths.some((sp) => p === sp || p.startsWith(sp + "/"))) return;
     // Browsers and scanners hunting for wordpress are noise, not demand.
     const ua = String(req.headers["user-agent"] || "");
     if (/Mozilla|Chrome|Safari|Edg\//i.test(ua) && !/bot|node|python|curl|agent/i.test(ua)) return;

@@ -43,7 +43,7 @@ import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { discoveryRouter, ENDPOINTS } from "./discovery.js";
 import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
-import { recordView, markBuyer, funnel, recordMiss, wantList } from "./funnel.js";
+import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } from "./funnel.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -617,6 +617,31 @@ async function deliver(
 // sell. Browsers and vulnerability scanners are filtered out in recordMiss; what remains is an
 // external agent naming a product we do not have. That is the only demand signal here that
 // nobody in this company invented. Read it at GET /wanted.
+// ─── DISCOVERY ALIASES + PREFLIGHT ────────────────────────────────────────
+// A real crawler (agent-tools.cloud-crawler/0.1) requested /.well-known/x402 — WITHOUT the .json —
+// five times and got a 404 every time. It was trying to index us and could not. The extension is
+// not universal across x402 clients, so serve both spellings. Same for the agent card.
+// Tell the want list which paths we genuinely serve, so a method mismatch is never mistaken for
+// unmet demand. Derived from the real route table + the free routes, so it cannot drift.
+setServedPaths([
+  ...Object.keys(routes).map((k) => k.split(" ")[1]),
+  "/health", "/catalog", "/stats", "/funnel", "/wanted", "/dashboard", "/track-record",
+  "/accuracy", "/demand", "/llms.txt", "/.well-known/x402.json", "/.well-known/agent.json",
+  "/.well-known/x402", "/.well-known/agent", "/mcp", "/company", "/truth", "/favicon.ico",
+]);
+
+
+// CORS preflight and method errors were falling through to the 404 handler, which recorded them as
+// "demand for a product we do not sell" — that is how /price, an endpoint we have always served,
+// became the top entry on the want list. Answer preflight properly and say which verb is allowed.
+app.options("*", (req, res) => {
+  res.setHeader("Allow", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "X-PAYMENT, Content-Type");
+  res.status(204).end();
+});
+
 app.use((req, res) => {
   recordMiss(req);
   res.status(404).json({
