@@ -25,6 +25,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getJson } from "./data.js";
 import { safetyReport } from "./safety.js";
+import { setVerdictAccuracy } from "./calib-cache.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Committed, git-versioned path: a GitHub Action snapshots it every ~30min, so
@@ -40,6 +41,42 @@ const MAX_ROWS = 2000;
 const NEW_PER_SWEEP = 6; // bound upstream load
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 
+/**
+ * THE FEATURE VECTOR — the inputs that produced the score, recorded alongside the outcome.
+ *
+ * Until 2026-07-26 this ledger stored the SCORE and the OUTCOME and nothing else. That is an answer
+ * key with the questions thrown away: 1,164 graded predictions, and no way to ask which signal
+ * actually predicted anything. So the weights in safety.ts are hand-guessed, and it shows —
+ * on genuinely clean tokens the scorer was right 25 times out of 197. It flags almost everything.
+ *
+ * Every one of these fields was already computed on the call path. We were discarding them.
+ *
+ * This is the company's one durable moat: a competitor starting today needs months of wall-clock
+ * time to accumulate the same labelled set, and there is no API that sells it. Every sweep that
+ * runs without capturing the inputs is a day of moat that cannot be recovered later.
+ */
+type Feat = {
+  holders: number | null;
+  lp_locked: boolean | null;
+  renounced: boolean | null;
+  verified: boolean | null;      // source code published
+  mintable: boolean | null;
+  proxy: boolean | null;
+  creator_prior_honeypot: boolean | null;
+  buy_tax: number | null;
+  sell_tax: number | null;
+  hp_honeypot: boolean | null;   // live sell simulation said honeypot
+  needs_review: boolean | null;  // static and dynamic sources disagreed
+  red_flags: number;
+  green_flags: number;
+  sources: number;
+  liq_usd: number | null;        // liquidity at call time — the strongest candidate signal
+  // Deliberate scam infrastructure leaves fingerprints in the address itself: vanity-mined or
+  // factory-deployed addresses carry long zero runs. Free to compute, never used before.
+  addr_zero_run: number;
+  addr_vanity: boolean;
+};
+
 type Row = {
   id: string;
   t: number; // when we made the call
@@ -50,12 +87,26 @@ type Row = {
   risk_score: number;
   liq0: number | null; // liquidity USD at call time
   px0: number | null; // price USD at call time
+  feat?: Feat;         // inputs behind the score — added 2026-07-26, absent on older rows
+  reuse?: number;      // how many times we had already seen this symbol before this call
   graded: boolean;
   outcome?: "rugged" | "dumped" | "fine";
   liq_now_pct?: number | null; // % of original liquidity remaining at grading
   px_now_pct?: number | null;
   graded_after_h?: number;
 };
+
+/** Longest run of repeated hex characters in the address body. A normally-deployed contract has a
+ *  run of 3-4 by chance; vanity-mined and factory addresses run far longer. */
+function addressFingerprint(address: string): { addr_zero_run: number; addr_vanity: boolean } {
+  const body = address.replace(/^0x/, "").toLowerCase();
+  let best = 0, cur = 1;
+  for (let i = 1; i < body.length; i++) {
+    if (body[i] === body[i - 1]) { cur++; if (cur > best) best = cur; } else cur = 1;
+  }
+  if (best === 0) best = 1;
+  return { addr_zero_run: best, addr_vanity: best >= 8 };
+}
 
 const rows: Row[] = [];
 const seen = new Set<string>(); // chain:address we've already recorded
@@ -143,16 +194,44 @@ async function sweep(): Promise<void> {
         // liquidity at call time can't be graded (it would default to "fine"
         // and quietly inflate the clean-call count). Skip it.
         if (market.liq == null || market.liq <= 0) continue;
+        const sym = report.token?.symbol ?? market.symbol;
+        const d: any = (report as any).details ?? {};
+        const fp = addressFingerprint(address);
+        // THE RELAUNCH SIGNAL. A scammer who rugs relaunches under the same ticker, and counting
+        // that is only possible for someone who has been recording — which is exactly why it is
+        // worth selling. Counted BEFORE this row is pushed, so it means "times seen before now".
+        const reuse = sym
+          ? rows.filter((r) => r.symbol && r.symbol.toLowerCase() === String(sym).toLowerCase()).length
+          : 0;
         const row: Row = {
           id: `${Date.now().toString(36)}-${address.slice(2, 8)}`,
           t: Date.now(),
           chain: "base",
           address,
-          symbol: report.token?.symbol ?? market.symbol,
+          symbol: sym,
           verdict: report.verdict,
           risk_score: report.risk_score,
           liq0: market.liq,
           px0: market.px,
+          reuse,
+          feat: {
+            holders: d.holder_count ?? null,
+            lp_locked: d.lp_locked ?? null,
+            renounced: Array.isArray(report.green_flags) ? report.green_flags.includes("ownership renounced") : null,
+            verified: d.open_source ?? null,
+            mintable: d.mintable ?? null,
+            proxy: d.proxy ?? null,
+            creator_prior_honeypot: d.same_creator_honeypot ?? null,
+            buy_tax: d.buy_tax_pct ?? null,
+            sell_tax: d.sell_tax_pct ?? null,
+            hp_honeypot: d.honeypot_simulated ?? null,
+            needs_review: (report as any).needs_review ?? null,
+            red_flags: Array.isArray(report.red_flags) ? report.red_flags.length : 0,
+            green_flags: Array.isArray(report.green_flags) ? report.green_flags.length : 0,
+            sources: Array.isArray((report as any).sources) ? (report as any).sources.length : 0,
+            liq_usd: market.liq,
+            ...fp,
+          },
           graded: false,
         };
         rows.push(row);
@@ -203,13 +282,35 @@ async function sweep(): Promise<void> {
   }
 }
 
+/** Publish our measured per-verdict accuracy so paid responses can carry it. One-way: record.ts
+ *  writes, safety.ts reads. See calib-cache.ts for why it is not a direct import. */
+function refreshVerdictAccuracy(): void {
+  // CURRENT-ERA ONLY. Attaching a lifetime average to a live verdict would quote the accuracy of a
+  // scorer we retired on 2026-07-25 -- and it would quote it to the buyer, on the thing they paid
+  // for. Keep this constant in step with ERAS[0] in calibration.ts.
+  const CURRENT_ERA_FROM = Date.parse("2026-07-25T05:37:33.000Z");
+  const graded = rows.filter((r) => r.graded && r.outcome && r.t >= CURRENT_ERA_FROM);
+  if (!graded.length) return;
+  const out: Record<string, { calls: number; ruggedPct: number }> = {};
+  for (const v of ["ok", "warning", "danger"]) {
+    const inV = graded.filter((r) => r.verdict === v);
+    if (!inV.length) continue;
+    const rugged = inV.filter((r) => r.outcome === "rugged").length;
+    out[v] = { calls: inV.length, ruggedPct: Number(((100 * rugged) / inV.length).toFixed(1)) };
+  }
+  const allRugged = graded.filter((r) => r.outcome === "rugged").length;
+  out.__base__ = { calls: graded.length, ruggedPct: Number(((100 * allRugged) / graded.length).toFixed(1)) };
+  setVerdictAccuracy(out);
+}
+
 let started = false;
 export function startRecord(): void {
   if (started) return;
   started = true;
   load();
-  setInterval(() => void sweep(), SWEEP_MS);
-  setTimeout(() => void sweep(), 25_000); // first sweep shortly after boot
+  refreshVerdictAccuracy();
+  setInterval(() => { void sweep().then(refreshVerdictAccuracy); }, SWEEP_MS);
+  setTimeout(() => { void sweep().then(refreshVerdictAccuracy); }, 25_000); // first sweep shortly after boot
 }
 
 export function trackRecordSummary() {

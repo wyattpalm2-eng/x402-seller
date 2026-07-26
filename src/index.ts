@@ -45,6 +45,7 @@ import { discoveryRouter, ENDPOINTS } from "./discovery.js";
 import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
 import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } from "./funnel.js";
 import { getUpstreamHealth, summarize } from "./upstream.js";
+import { calibration, signalLift, relaunchStats } from "./calibration.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -374,6 +375,20 @@ app.get("/robots.txt", freeRateLimit, (_req, res) =>
   res.type("text/plain").send("User-agent: *\nAllow: /\n\n# agent-readable docs\n# /llms.txt  /catalog  /openapi.json  /.well-known/x402.json  /accuracy\n"));
 // Raw rows for the git snapshot Action (free; public on-chain data only, no PII).
 app.get("/track-record/raw", freeRateLimit, (_req, res) => res.json({ rows: rawRows() }));
+
+// ─── THE HONESTY SURFACE (free, deliberately) ────────────────────────────
+// Every rug scanner claims high accuracy and not one publishes its misses, because publishing
+// misses requires having graded yourself in public for months. We have. So the differentiator in a
+// market where no claim is checkable is being the one that can be checked -- and that argument only
+// lands if the numbers are free to read before anyone spends money.
+//
+// /calibration turns the score into a probability a buyer can put in an expected-value calculation
+// ("when we say 30, tokens rug 44% of the time"). /signals reports which of our own inputs actually
+// separate rugs from survivors, including the ones that turn out to be decoration. Publishing that
+// second one is uncomfortable, which is rather the point.
+app.get("/calibration", freeRateLimit, (_req, res) => res.json(calibration(rawRows())));
+app.get("/signals", freeRateLimit, (_req, res) => res.json(signalLift(rawRows())));
+app.get("/relaunches", freeRateLimit, (_req, res) => res.json(relaunchStats(rawRows())));
 
 // FREE live demo: ONE real /vet per IP per hour (global daily cap). Agents
 // integrate what they can test end-to-end without money — the paid calls come

@@ -30,7 +30,8 @@ import { cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
-import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
+import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
+import { verdictHonesty } from "./calib-cache.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 export const PRICE_SAFETY = process.env.PRICE_ONCHAIN_SAFETY || "$0.01";
@@ -288,6 +289,13 @@ export async function safetyReport(chainKey: string, address: string) {
       creator_address: t?.creator_address ?? null,
     },
     sources,
+    // Our own measured accuracy for THIS verdict, attached to the thing the buyer is paying for.
+    // Our published calibration currently shows the score inverted: tokens we call "ok" rugged
+    // 78.9% of the time across 128 graded calls (101 rugged, 0 merely dumped -- the signature of a
+    // liquidity pull, which no contract scan can see), while tokens we call "danger" rugged 0 times
+    // in 21. Selling a verdict silently while the evidence says the opposite is exactly the fake
+    // this company exists not to ship. Null when we have too little history to say anything.
+    historical_accuracy: verdictHonesty(verdict),
     as_of: new Date().toISOString(),
   };
 }
