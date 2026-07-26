@@ -25,13 +25,33 @@ const defillama = require('./lib/defillama.cjs');
 const PORT = process.env.PORT || 4024;
 const PRICE = "0.05";
 
-// Well-known ERC-20 tokens on Base to sample for wallet holdings, mapped to protocols
-const BASE_TOKENS = [
-  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
-  "0x4200000000000000000000000000000000000006",  // WETH on Base
-  "0x50c5725949A6F0c72E6C4a641F24049A393e1418",  // DEGEN on Base
-  "0x2Ae3F1Ec7F218F39a9DBDc0471F457033285A09B",  // AERO on Base
-];
+// Well-known ERC-20 tokens to sample for wallet holdings, PER CHAIN.
+//
+// This used to be a single BASE_TOKENS list applied to whatever chain the caller passed, while the
+// route accepted ?chain=eth. None of the four contracts exist on Ethereum mainnet (verified with
+// the code's own getCode(): all four return isContract=false, 0 bytes), so on eth the token sample
+// was always empty. That silently zeroed FOUR scoring components -- token diversity (20), the
+// diversity bonus (10), DeFi exposure (15) and the DeFi bonus (10) -- so 45 of 100 points were
+// unreachable and every Ethereum wallet, including known whales, scored as an empty account.
+// The catalog advertised "for any Base or Ethereum address ... ERC-20 token holdings, and DeFi
+// protocol exposure", which was simply untrue on one of the two chains it named.
+const TOKENS_BY_CHAIN = {
+  base: [
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+    "0x4200000000000000000000000000000000000006", // WETH on Base
+    "0x50c5725949A6F0c72E6C4a641F24049A393e1418", // DEGEN on Base
+    "0x2Ae3F1Ec7F218F39a9DBDc0471F457033285A09B", // AERO on Base
+  ],
+  eth: [
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC on Ethereum
+    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH on Ethereum
+    "0x6B175474E89094C44Da98b954EedeAC495271d0F", // DAI on Ethereum
+    "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", // AAVE on Ethereum
+  ],
+};
+function tokensFor(chain) {
+  return TOKENS_BY_CHAIN[String(chain || "").toLowerCase()] || TOKENS_BY_CHAIN.base;
+}
 
 // Map token symbols to known DeFi protocols for TVL exposure analysis
 const TOKEN_TO_PROTOCOL = {
@@ -59,7 +79,7 @@ async function fetchWalletSignals(chain, address) {
 
   // 3. Sample ERC-20 token balances (try each known token)
   const tokenBalances = [];
-  for (const tokenAddr of BASE_TOKENS) {
+  for (const tokenAddr of tokensFor(chain)) {
     try {
       const result = await rpc(chain, "eth_call", [
         { to: tokenAddr, data: "0x70a08231000000000000000000000000" + address.toLowerCase().replace("0x", "") },

@@ -23,7 +23,11 @@ const SUPPORTED = [
   'HODL',  // VanEck Bitcoin Trust
   'BRRR',  // Valkyrie Bitcoin Fund
   'BTCO',  // Invesco Galaxy Bitcoin ETF
-  'DEFT',  // Grayscale Bitcoin Mini Trust
+  // 'DEFT' REMOVED 2026-07-26: the comment claimed "Grayscale Bitcoin Mini Trust", but Yahoo
+  // resolves DEFT to "DeFi Technologies Inc." -- an operating company, not a spot ETF. Its share
+  // price action was being summed into total_net_flow_usd as if it were fund flow. The correct
+  // Grayscale Bitcoin Mini ticker is BTC; it is left out rather than swapped in because that
+  // substitution was never verified against the live feed.
   // ETH spot
   'ETHA',  // iShares Ethereum Trust (BlackRock)
   'FETH',  // Fidelity Ethereum Fund
@@ -131,7 +135,13 @@ async function handler(params) {
     var symbolNetFlow = 0;
     var n = Math.min(days, closes.length);
 
-    for (var d = 1; d < n; d++) {
+    // Take the MOST RECENT n bars, not the oldest. The loop used to run d = 1..n from the start of
+    // the series, so a caller asking days=20 received bars from 2026-06-26..2026-07-23 while as_of
+    // reported 2026-07-24 -- the very bar the loop excluded. days=5 happened to look right, so the
+    // defect only appeared once a buyer asked for a longer window: stale data stamped with today.
+    var start = Math.max(1, closes.length - n);
+
+    for (var d = start; d < closes.length; d++) {
       var prevClose = closes[d - 1];
       var o = opens[d], h = highs[d], l = lows[d], c = closes[d], v = volumes[d];
       if (!o || !h || !l || !c || !v || !prevClose) continue;
