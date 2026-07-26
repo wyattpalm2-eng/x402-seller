@@ -44,6 +44,7 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { discoveryRouter, ENDPOINTS } from "./discovery.js";
 import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
 import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } from "./funnel.js";
+import { getUpstreamHealth, summarize } from "./upstream.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -273,7 +274,24 @@ function freeRateLimit(req: Request, res: Response, next: () => void) {
 }
 
 // Free routes — defined BEFORE the paywall so they never get charged.
-app.get("/health", freeRateLimit, (_req, res) => res.json({ ok: true, network: NETWORK, payTo: PAY_TO }));
+// /health used to answer `{ ok: true }` and nothing else -- it never looked at the free APIs every
+// paid endpoint resells, so it could not have known when we were about to sell degraded data. It
+// said "ok" while Open-Meteo was returning a quota refusal and the weather consensus was quietly
+// dropping from 3 sources to 2. `ok` now means "we can serve what we advertise", which is the only
+// version of the word worth publishing.
+app.get("/health", freeRateLimit, async (_req, res) => {
+  const results = await getUpstreamHealth().catch(() => []);
+  const up = summarize(results);
+  res.json({
+    ok: up.ok,
+    network: NETWORK,
+    payTo: PAY_TO,
+    upstreams: results,
+    ...(up.degraded.length ? { degraded: up.degraded } : {}),
+    ...(up.unchecked.length ? { unchecked: up.unchecked } : {}),
+    note: up.note,
+  });
+});
 app.get("/catalog", freeRateLimit, (_req, res) =>
   res.json({ payTo: PAY_TO, network: NETWORK, facilitator: FACILITATOR_LABEL, endpoints: CATALOG }),
 );
