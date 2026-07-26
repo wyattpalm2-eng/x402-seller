@@ -128,7 +128,7 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/token/risk/{address}", price: P.tokenRisk,
-    description: "COMPOSITE TOKEN RISK SCORE (0-100) for any Base or Ethereum token, computed from five independent on-chain signals and fused into one verdict: holder concentration sampled from real Transfer event logs, Sourcify source-verification status, contract bytecode analysis, DexScreener liquidity + 24h volume + transaction counts, and supply distribution across recent recipients. Collapses 5+ separate API calls and the scoring logic an agent would have to write and maintain into a single request. The address is validated BEFORE the paywall, so a malformed address returns 400 and is never charged.",
+    description: "ONE-CALL TOKEN RISK SCORE (0-100): fuses holder concentration from real Transfer logs, Sourcify verification, bytecode analysis, DexScreener liquidity/volume, and recent-recipient distribution into a single verdict (low/medium/high/critical). Replaces 5+ chained API calls -- RPC event scans, Sourcify fetch, bytecode download, DexScreener lookup, supply sampling -- plus the scoring logic to weigh them. Answers 'is this token safe to hold?' before an agent commits. Address validated pre-paywall (400, never a charge).",
     input: {
       address: { type: "string", required: true, example: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
       chain: { type: "string", required: false, default: "base", enum: ["base", "eth"] },
