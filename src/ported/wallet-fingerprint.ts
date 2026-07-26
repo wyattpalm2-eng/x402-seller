@@ -12,7 +12,7 @@ import { getReceiveAddress } from "../wallet.js";
 import handler from "./wallet-fingerprint.handler.cjs";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_WALLET_FINGERPRINT = process.env.PRICE_WALLET_FINGERPRINT || "$0.05";
+export const PRICE_WALLET_FINGERPRINT = process.env.PRICE_WALLET_FINGERPRINT || "$0.01";
 
 export const walletFingerprintRouter: Router = Router();
 walletFingerprintRouter.get("/wallet/fingerprint/:address", (req: Request, res: Response) => {
