@@ -46,6 +46,7 @@ import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
 import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } from "./funnel.js";
 import { getUpstreamHealth, summarize } from "./upstream.js";
 import { calibration, signalLift, relaunchStats } from "./calibration.js";
+import { bazaarRouter } from "./bazaar.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -386,6 +387,10 @@ app.get("/track-record/raw", freeRateLimit, (_req, res) => res.json({ rows: rawR
 // ("when we say 30, tokens rug 44% of the time"). /signals reports which of our own inputs actually
 // separate rugs from survivors, including the ones that turn out to be decoration. Publishing that
 // second one is uncomfortable, which is rather the point.
+// We serve a discovery index ourselves rather than waiting to be listed in one. Free and mounted
+// before the paywall: a directory behind a paywall is a directory nobody uses.
+app.use(freeRateLimit, bazaarRouter);
+
 app.get("/calibration", freeRateLimit, (_req, res) => res.json(calibration(rawRows())));
 app.get("/signals", freeRateLimit, (_req, res) => res.json(signalLift(rawRows())));
 app.get("/relaunches", freeRateLimit, (_req, res) => res.json(relaunchStats(rawRows())));
