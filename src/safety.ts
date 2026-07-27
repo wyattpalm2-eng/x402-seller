@@ -51,6 +51,31 @@ export const SAFETY_CHAINS = [...Object.keys(GOPLUS_CHAINS), "solana"];
 // Chains where Honeypot.is dynamic simulation is available (verified live).
 // Elsewhere we degrade to GoPlus-only and say so in the report.
 const HONEYPOT_CHAINS = new Set(["1", "56", "8453"]);
+
+// Blockscout instances (free, NO key) — a THIRD independent source, added 2026-07-27. Its job is
+// the fresh-token gap that inverted the scorer: when GoPlus has not yet analysed a token, GoPlus
+// returns nothing and the old code called it "ok". Blockscout still knows whether the contract is
+// verified and how many holders it has — real signal exactly where GoPlus is blind. An unverified
+// contract with a handful of holders is the fresh-rug profile, and this catches it.
+const BLOCKSCOUT: Record<string, string> = {
+  "8453": "https://base.blockscout.com",
+  "1": "https://eth.blockscout.com",
+  "10": "https://optimism.blockscout.com",
+};
+async function blockscout(chainId: string, addr: string) {
+  const base = BLOCKSCOUT[chainId];
+  if (!base) return null;
+  const [tok, con] = await Promise.all([
+    cached(`bs:tok:${chainId}:${addr}`, () => getJson(`${base}/api/v2/tokens/${encodeURIComponent(addr)}`)).catch(() => null),
+    cached(`bs:con:${chainId}:${addr}`, () => getJson(`${base}/api/v2/smart-contracts/${encodeURIComponent(addr)}`)).catch(() => null),
+  ]);
+  if (!tok && !con) return null;
+  return {
+    holders: num(tok?.holders ?? tok?.holders_count),
+    verified: con ? con.is_verified === true : null, // null = Blockscout had no contract record either
+    name: tok?.name ?? con?.name ?? null,
+  };
+}
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 // Holder count at/above which a token is treated as "established" — its LP-lock
 // status stops being a first-class rug signal (blue chips shouldn't false-flag).
@@ -128,7 +153,13 @@ export async function safetyReport(chainKey: string, address: string) {
   ]);
 
   const t = gp?.result?.[addr];
-  if (!t && !hp) return null; // neither source had anything -> 404
+
+  // THIRD SOURCE (fresh-token gap): only when GoPlus is blind. A token GoPlus has no record of is
+  // exactly the case that inverted the scorer — so reach for Blockscout, which still knows if the
+  // contract is verified and how many holders it has.
+  const bs = !t ? await blockscout(chainId, addr).catch(() => null) : null;
+
+  if (!t && !hp && !bs) return null; // no source had anything -> 404
 
   // LP-LOCK: require a MEANINGFUL locked share, not merely "some holder is flagged locked".
   //
@@ -247,6 +278,10 @@ export async function safetyReport(chainKey: string, address: string) {
     ["liquidity locked", lpLocked === true],
     ["10k+ holders", (Number(t?.holder_count) || 0) >= 10000],
   ];
+  // Blockscout counts as positive evidence when it can vouch for the contract — a verified contract
+  // with a real holder base is a genuine green signal even without GoPlus.
+  const bsVerifiedGreen = bs?.verified === true && (bs.holders ?? 0) >= 100;
+  if (bsVerifiedGreen) greenChecks.push(["contract verified on Blockscout with a real holder base", true]);
   const greenFlags = greenChecks.filter(([, ok]) => ok).map(([label]) => label);
   const passedSim = Boolean(hp) && hp!.sim_success === true && !hp!.is_honeypot;
 
@@ -255,15 +290,24 @@ export async function safetyReport(chainKey: string, address: string) {
   // 83% of the time, and they were overwhelmingly tokens GoPlus had NO data on — fresh scams (often
   // stock-ticker impersonations like NFLX/MSFT) that were tradeable on DexScreener but not yet
   // analysed. With no red flags to fire, risk summed to 0 and the token defaulted to "ok". Absence
-  // of signal was being scored as safety. A rug scanner that calls the unknown "safe" is worse than
-  // useless — it is confidently wrong exactly when someone is about to lose money.
+  // of signal was being scored as safety, which is worse than useless for a rug scanner.
   //
-  // So: no static contract analysis => it CANNOT be "ok", and it carries a real risk weight, because
-  // being un-analysable is itself the profile of a fresh rug. The asymmetry is deliberate: a false
-  // "caution" on a safe obscure token costs a shrug; a false "ok" on a scam costs the buyer's money.
+  // When GoPlus is blind we now use Blockscout for REAL signal instead of a blanket penalty:
   if (!t) {
-    risk = Math.min(100, risk + 30);
-    redFlags.push("no contract-safety data (GoPlus has not analysed this token — fresh or unlisted, which is itself the fresh-rug profile; unverified, not safe)");
+    if (bs?.verified === false) {
+      risk = Math.min(100, risk + 45);
+      redFlags.push("contract is NOT verified on Blockscout — unverified source is a classic fresh-rug profile");
+    }
+    if (bs && bs.holders != null && bs.holders < 50) {
+      risk = Math.min(100, risk + 25);
+      redFlags.push(`only ${bs.holders} holders (Blockscout) — a tiny holder base on an un-analysed token`);
+    }
+    if (!bsVerifiedGreen) {
+      // Even with Blockscout, if it cannot positively vouch for the token, we still cannot call it
+      // "ok". Being un-analysable by GoPlus AND unvouched by Blockscout is the fresh-rug profile.
+      risk = Math.min(100, risk + 20);
+      redFlags.push("GoPlus has no data on this token and Blockscout cannot vouch for it — unverified, not safe");
+    }
   }
 
   let verdict: "ok" | "warning" | "danger" = risk >= 60 ? "danger" : risk >= 25 ? "warning" : "ok";
@@ -278,7 +322,7 @@ export async function safetyReport(chainKey: string, address: string) {
     redFlags.push("clean of red flags, but nothing POSITIVE verifies it either (no passed sell-sim, few green signals) — unproven, not safe");
   }
 
-  const sources = [t ? "goplus (static)" : null, hp ? "honeypot.is (dynamic sim)" : null].filter(Boolean) as string[];
+  const sources = [t ? "goplus (static)" : null, hp ? "honeypot.is (dynamic sim)" : null, bs ? "blockscout (verification + holders)" : null].filter(Boolean) as string[];
   const confidence = needsReview ? "low (sources disagree)" : haveBoth ? "high" : "medium (single source)";
 
   return {
