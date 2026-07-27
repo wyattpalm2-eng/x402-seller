@@ -96,9 +96,19 @@ function normalizeDsPair(p: any) {
   };
 }
 
-function bestPair(pairs: any[], dsChain?: string): any | null {
+function bestPair(pairs: any[], dsChain?: string, wantBaseAddr?: string): any | null {
   const scoped = dsChain ? pairs.filter((p) => p?.chainId === dsChain) : pairs;
-  const pool = scoped.length ? scoped : pairs;
+  let pool = scoped.length ? scoped : pairs;
+  // DexScreener's priceUsd on a pair is the BASE token's USD price. The /tokens/{addr} feed returns
+  // pairs where our token is base OR quote — and for stablecoins/quote-heavy tokens the deepest pool
+  // is usually TOKEN/ours (ours = quote), whose priceUsd is the OTHER token's price. That is how
+  // vet_token reported USDC at $0.45. When we know the queried token, keep only pairs where it is the
+  // BASE token so priceUsd reflects IT. If it never appears as base (rare), fall back rather than 404.
+  if (wantBaseAddr) {
+    const w = wantBaseAddr.toLowerCase();
+    const baseMatch = pool.filter((p) => String(p?.baseToken?.address ?? "").toLowerCase() === w);
+    if (baseMatch.length) pool = baseMatch;
+  }
   if (!pool.length) return null;
   return pool.reduce((best, p) => ((num(p?.liquidity?.usd) ?? 0) > (num(best?.liquidity?.usd) ?? 0) ? p : best), pool[0]);
 }
@@ -134,7 +144,7 @@ export async function tokenSnapshot(address?: string, query?: string, chainKey?:
     );
     pairs = j?.pairs ?? [];
   }
-  const p = bestPair(pairs, ci?.ds);
+  const p = bestPair(pairs, ci?.ds, address);
   if (!p) return null;
   return {
     query: address ?? query,
