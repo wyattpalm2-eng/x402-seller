@@ -13,6 +13,13 @@
  *      sell on-chain, so it catches sell-traps the static scanner misses and
  *      clears benign tokens GoPlus over-flags. Confirmed to cover ETH/BSC/Base.
  *
+ * Two curated GitHub lists (free, keyless) sharpen the ends of the scale:
+ *   • KNOWN-SCAM BLOCKLIST (MyEtherWallet ethereum-lists, ~650 documented scammer
+ *     addresses) — a hit on the token OR its deployer is a hard danger gate: the
+ *     highest-confidence red flag, a curated record that the address already stole.
+ *   • REPUTABLE ALLOWLIST (Uniswap default token list) — a vetted token is real
+ *     positive evidence that lets a clean verdict be EARNED, not defaulted.
+ *
  * On top of the two feeds we add the judgment layer that makes this worth paying
  * for and that raw-data sellers don't offer:
  *   • HARD-ZERO GATES  — any dead-certain trap (live-sim honeypot, can't-sell-all)
@@ -76,6 +83,56 @@ async function blockscout(chainId: string, addr: string) {
     name: tok?.name ?? con?.name ?? null,
   };
 }
+
+// KNOWN-SCAM BLOCKLIST (free, NO key) — github.com/MyEtherWallet/ethereum-lists darklist, added
+// 2026-07-27. ~650 human-curated addresses that ALREADY stole funds, each carrying a written reason.
+// This is a different KIND of signal from every scanner above: not "the contract shape looks risky"
+// but "this exact address is a documented scammer". A hit is therefore a HARD danger gate — the
+// highest-confidence red flag the scorer can get. We check both the token address AND its deployer
+// (GoPlus creator_address), because the collector/deployer EOAs are exactly what this list catalogues.
+// The list is eth-mainnet-curated, so a MISS means nothing (partial cross-chain coverage) — absence
+// is NEVER scored as safety. Scammers reuse addresses across chains, so hits on Base do occur.
+const SCAM_DARKLIST_URL =
+  "https://raw.githubusercontent.com/MyEtherWallet/ethereum-lists/master/src/addresses/addresses-darklist.json";
+let _scamMemo: { src: any[]; map: Map<string, string> } | null = null;
+async function scamMap(): Promise<Map<string, string> | null> {
+  const list = await cached("scamlist:mew-darklist", () => getJson(SCAM_DARKLIST_URL)).catch(() => null);
+  if (!Array.isArray(list)) return null; // fetch failed -> UNKNOWN, never "clean"
+  if (!_scamMemo || _scamMemo.src !== list) {
+    const map = new Map<string, string>();
+    for (const e of list) if (e?.address) map.set(String(e.address).toLowerCase(), String(e.comment || ""));
+    _scamMemo = { src: list, map };
+  }
+  return _scamMemo.map;
+}
+
+// REPUTABLE ALLOWLIST (free, NO key) — Uniswap default token list, added 2026-07-27. The GREEN
+// counterpart: a token vetted onto Uniswap's curated list is essentially never a fresh rug, so its
+// presence is real positive evidence that helps a clean verdict get EARNED (rather than defaulting
+// from the mere absence of red flags — the exact hole that inverted this scorer). Absence is NEUTRAL:
+// most legitimate small tokens are not listed either, so a miss adds nothing and never false-flags.
+const UNISWAP_LISTS: Record<string, string> = {
+  "8453": "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/base.json",
+  "1": "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/mainnet.json",
+  "10": "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/optimism.json",
+  "42161": "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/arbitrum.json",
+  "137": "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/polygon.json",
+};
+const _trustMemo: Record<string, { src: any[]; set: Set<string> }> = {};
+async function isReputableToken(chainId: string, addr: string): Promise<boolean> {
+  const url = UNISWAP_LISTS[chainId];
+  if (!url) return false;
+  const list = await cached(`tokenlist:uniswap:${chainId}`, () => getJson(url)).catch(() => null);
+  if (!Array.isArray(list)) return false; // fetch failed -> just no green flag, never a red one
+  const memo = _trustMemo[chainId];
+  if (!memo || memo.src !== list) {
+    const set = new Set<string>();
+    for (const tok of list) if (tok?.address) set.add(String(tok.address).toLowerCase());
+    _trustMemo[chainId] = { src: list, set };
+  }
+  return _trustMemo[chainId].set.has(addr);
+}
+
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 // Holder count at/above which a token is treated as "established" — its LP-lock
 // status stops being a first-class rug signal (blue chips shouldn't false-flag).
@@ -141,8 +198,10 @@ export async function safetyReport(chainKey: string, address: string) {
   const chainId = GOPLUS_CHAINS[chainKey]; // validated upstream
   const addr = address.toLowerCase();
 
-  // Two independent methods in parallel: static (GoPlus) + dynamic (Honeypot.is).
-  const [gp, hp] = await Promise.all([
+  // Independent sources in parallel: static (GoPlus) + dynamic (Honeypot.is) + two curated GitHub
+  // lists (known-scam blocklist, reputable allowlist). All four are keyless; each .catch keeps a
+  // single upstream hiccup from ever breaking a paid call.
+  const [gp, hp, trusted, scamLookup] = await Promise.all([
     cached(`gp:${chainId}:${addr}`, () =>
       getJson(
         `https://api.gopluslabs.io/api/v1/token_security/${encodeURIComponent(chainId)}` +
@@ -150,6 +209,8 @@ export async function safetyReport(chainKey: string, address: string) {
       ),
     ).catch(() => null),
     honeypotSim(chainId, addr).catch(() => null),
+    isReputableToken(chainId, addr).catch(() => false),
+    scamMap().catch(() => null),
   ]);
 
   const t = gp?.result?.[addr];
@@ -159,7 +220,18 @@ export async function safetyReport(chainKey: string, address: string) {
   // contract is verified and how many holders it has.
   const bs = !t ? await blockscout(chainId, addr).catch(() => null) : null;
 
-  if (!t && !hp && !bs) return null; // no source had anything -> 404
+  // KNOWN-SCAM check: is the token address, or its deployer, a documented scammer? A hit here is a
+  // hard danger regardless of everything else, so it must be able to produce a verdict even when no
+  // scanner has data on the token (a fresh malicious contract) — hence it counts against the 404 gate.
+  const creator = t?.creator_address ? String(t.creator_address).toLowerCase() : null;
+  const scamOnAddr = scamLookup?.get(addr);
+  const scamOnCreator = creator ? scamLookup?.get(creator) : undefined;
+  const scam =
+    scamOnAddr !== undefined ? { who: "token address", comment: scamOnAddr }
+    : scamOnCreator !== undefined ? { who: "deployer", comment: scamOnCreator }
+    : null;
+
+  if (!t && !hp && !bs && !scam) return null; // no source had anything -> 404
 
   // LP-LOCK: require a MEANINGFUL locked share, not merely "some holder is flagged locked".
   //
@@ -258,6 +330,16 @@ export async function safetyReport(chainKey: string, address: string) {
   const hardTrap = (hp?.is_honeypot === true) || flag(t?.is_honeypot) || flag(t?.cannot_sell_all);
   if (hardTrap) risk = 100;
 
+  // KNOWN-SCAM BLOCKLIST GATE — a documented-scammer address (the token itself, or its deployer) is
+  // a hard danger no matter the point score. This is the highest-confidence signal in the scorer:
+  // not inference from contract shape, but a human-curated record that this address already stole.
+  if (scam) {
+    risk = 100;
+    redFlags.push(
+      `${scam.who} is on the MyEtherWallet known-scam blocklist${scam.comment ? ` — "${scam.comment.slice(0, 140)}"` : ""}`,
+    );
+  }
+
   // ── AGREEMENT FACTOR: static vs dynamic disagreement is itself a signal ──
   const haveBoth = Boolean(t && hp);
   const gpSaysClean = Boolean(t) && staticRisk < 25;
@@ -277,6 +359,7 @@ export async function safetyReport(chainKey: string, address: string) {
     ["cannot mint new supply", Boolean(t) && flag(t?.is_mintable) === false],
     ["liquidity locked", lpLocked === true],
     ["10k+ holders", (Number(t?.holder_count) || 0) >= 10000],
+    ["on a reputable token list (Uniswap default) — vetted, essentially never a fresh rug", trusted === true],
   ];
   // Blockscout counts as positive evidence when it can vouch for the contract — a verified contract
   // with a real holder base is a genuine green signal even without GoPlus.
@@ -322,7 +405,13 @@ export async function safetyReport(chainKey: string, address: string) {
     redFlags.push("clean of red flags, but nothing POSITIVE verifies it either (no passed sell-sim, few green signals) — unproven, not safe");
   }
 
-  const sources = [t ? "goplus (static)" : null, hp ? "honeypot.is (dynamic sim)" : null, bs ? "blockscout (verification + holders)" : null].filter(Boolean) as string[];
+  const sources = [
+    t ? "goplus (static)" : null,
+    hp ? "honeypot.is (dynamic sim)" : null,
+    bs ? "blockscout (verification + holders)" : null,
+    scamLookup ? "known-scam blocklist (mew ethereum-lists)" : null,
+    trusted ? "reputable token list (uniswap default)" : null,
+  ].filter(Boolean) as string[];
   const confidence = needsReview ? "low (sources disagree)" : haveBoth ? "high" : "medium (single source)";
 
   return {
@@ -358,6 +447,8 @@ export async function safetyReport(chainKey: string, address: string) {
       lp_locked: lpLocked,
       holder_count: Number(t?.holder_count) || null,
       creator_address: t?.creator_address ?? null,
+      on_reputable_list: trusted === true, // Uniswap default token list
+      known_scam_flagged: scam ? scam.who : false, // "token address" | "deployer" | false
     },
     sources,
     // Our own measured accuracy for THIS verdict, attached to the thing the buyer is paying for.
