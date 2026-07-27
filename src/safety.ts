@@ -30,7 +30,7 @@ import { cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
-import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
+import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
 import { verdictHonesty } from "./calib-cache.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
@@ -235,11 +235,9 @@ export async function safetyReport(chainKey: string, address: string) {
   const hpSaysClean = Boolean(hp) && !hp!.is_honeypot && (hp!.sell_tax ?? 0) <= 10 && (hp!.risk_level ?? 0) <= 1;
   const needsReview = Boolean((gpSaysClean && hpSaysBad) || (gpSaysBad && hpSaysClean));
 
-  let verdict: "ok" | "warning" | "danger" = risk >= 60 ? "danger" : risk >= 25 ? "warning" : "ok";
-  // A disagreement must never read as "clear" — floor it to caution.
-  if (needsReview && verdict === "ok") verdict = "warning";
-
-  // ── Positive signals — so a "clear" verdict is earned, not just absent flags ──
+  // ── Positive signals — a "clear" verdict must be EARNED, not just the absence of red flags ──
+  // Computed BEFORE the verdict, because the verdict now depends on whether real positive evidence
+  // exists. (This block used to run after the verdict and was purely cosmetic.)
   const greenChecks: Array<[string, boolean]> = [
     ["passed live buy & sell simulation", Boolean(hp) && !hp!.is_honeypot && hp!.sim_success === true],
     ["0% simulated buy & sell tax", Boolean(hp) && (hp!.buy_tax ?? 1) === 0 && (hp!.sell_tax ?? 1) === 0],
@@ -250,6 +248,35 @@ export async function safetyReport(chainKey: string, address: string) {
     ["10k+ holders", (Number(t?.holder_count) || 0) >= 10000],
   ];
   const greenFlags = greenChecks.filter(([, ok]) => ok).map(([label]) => label);
+  const passedSim = Boolean(hp) && hp!.sim_success === true && !hp!.is_honeypot;
+
+  // ── UNVERIFIED IS NOT SAFE (2026-07-27 — the fix for the scorer's inversion) ──
+  // The public track record proved this was the single biggest defect: tokens we called "ok" rugged
+  // 83% of the time, and they were overwhelmingly tokens GoPlus had NO data on — fresh scams (often
+  // stock-ticker impersonations like NFLX/MSFT) that were tradeable on DexScreener but not yet
+  // analysed. With no red flags to fire, risk summed to 0 and the token defaulted to "ok". Absence
+  // of signal was being scored as safety. A rug scanner that calls the unknown "safe" is worse than
+  // useless — it is confidently wrong exactly when someone is about to lose money.
+  //
+  // So: no static contract analysis => it CANNOT be "ok", and it carries a real risk weight, because
+  // being un-analysable is itself the profile of a fresh rug. The asymmetry is deliberate: a false
+  // "caution" on a safe obscure token costs a shrug; a false "ok" on a scam costs the buyer's money.
+  if (!t) {
+    risk = Math.min(100, risk + 30);
+    redFlags.push("no contract-safety data (GoPlus has not analysed this token — fresh or unlisted, which is itself the fresh-rug profile; unverified, not safe)");
+  }
+
+  let verdict: "ok" | "warning" | "danger" = risk >= 60 ? "danger" : risk >= 25 ? "warning" : "ok";
+  // A disagreement must never read as "clear" — floor it to caution.
+  if (needsReview && verdict === "ok") verdict = "warning";
+
+  // An "ok" must be EARNED: we need static coverage AND real positive evidence (a passed live
+  // sell-simulation, or at least two independent green signals). Absent that, the honest verdict is
+  // "warning: unverified", which is what an un-vouched token deserves — never a clean bill.
+  if (verdict === "ok" && !(passedSim || greenFlags.length >= 2)) {
+    verdict = "warning";
+    redFlags.push("clean of red flags, but nothing POSITIVE verifies it either (no passed sell-sim, few green signals) — unproven, not safe");
+  }
 
   const sources = [t ? "goplus (static)" : null, hp ? "honeypot.is (dynamic sim)" : null].filter(Boolean) as string[];
   const confidence = needsReview ? "low (sources disagree)" : haveBoth ? "high" : "medium (single source)";
