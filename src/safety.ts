@@ -500,6 +500,29 @@ export async function safetyReport(chainKey: string, address: string) {
     }
   }
 
+  // ── VETTED BLUE-CHIP GUARD (2026-07-27) — don't call Tether a rug ──
+  // A token on a reputable allowlist (Uniswap-vetted), deeply held, that passes the live sell-sim is
+  // not a rug. Its owner-power flags — mint / pause / blacklist / owner-can-change-balance, ALL true
+  // for USDT — are KNOWN, accepted centralization, not a trap. Without this, USDT scored danger=100
+  // and the scorer read as broken to anyone who checked a stablecoin. We soften ONLY the soft signals;
+  // the hard gates (honeypot sim-fail, cannot-sell, known-scam) already forced danger above and are
+  // left untouched, so a vetted token that somehow IS a honeypot still reads danger.
+  const hasOwnerPowers =
+    !renounced &&
+    (flag(t?.is_mintable) || flag(t?.transfer_pausable) || flag(t?.is_blacklisted) ||
+      flag(t?.owner_change_balance) || flag(t?.hidden_owner) || flag(t?.can_take_back_ownership) || flag(t?.selfdestruct));
+  const vettedBluechip = trusted === true && passedSim && (Number(t?.holder_count) || 0) >= HOLDER_ESTABLISHED;
+  if (vettedBluechip && !hardTrap && !scam) {
+    if (hasOwnerPowers && risk > 45) {
+      risk = 45; // centralization is real → warning, but NOT "rug/danger"
+      redFlags.push("centralized controls (issuer can mint/pause/blacklist/adjust balances) — a known, accepted property of this reputable, deeply-held, sell-sim-passing token, NOT a rug signal (verdict softened out of danger)");
+    } else if (!hasOwnerPowers && largestWalletShare >= 0.30 && risk > 45) {
+      risk = 45; // vetted but a single wallet holds 30%+ — still worth a warning, just not "danger"
+    } else if (!hasOwnerPowers && largestWalletShare < 0.30 && risk > 15) {
+      risk = 15; // renounced blue chip flagged only on soft LP/small-concentration noise → clear
+    }
+  }
+
   let verdict: "ok" | "warning" | "danger" = risk >= 60 ? "danger" : risk >= 25 ? "warning" : "ok";
   // A disagreement must never read as "clear" — floor it to caution.
   if (needsReview && verdict === "ok") verdict = "warning";
