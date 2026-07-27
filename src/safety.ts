@@ -19,6 +19,10 @@
  *     highest-confidence red flag, a curated record that the address already stole.
  *   • REPUTABLE ALLOWLIST (Uniswap default token list) — a vetted token is real
  *     positive evidence that lets a clean verdict be EARNED, not defaulted.
+ * And DexScreener adds the MARKET dimension no contract scan can see: pair AGE
+ * (pairCreatedAt — a pair born hours ago is the fresh-rug window, one of the
+ * strongest predictors) and absolute liquidity depth. Fresh + thin compounds with
+ * the unverified penalties for exactly the fresh scams that inverted this scorer.
  *
  * On top of the two feeds we add the judgment layer that makes this worth paying
  * for and that raw-data sellers don't offer:
@@ -133,6 +137,35 @@ async function isReputableToken(chainId: string, addr: string): Promise<boolean>
   return _trustMemo[chainId].set.has(addr);
 }
 
+// DEX MARKET AGE + LIQUIDITY (DexScreener, free NO key) — added 2026-07-27. This is the AGE
+// dimension the contract scanners are completely blind to, and age is one of the strongest rug
+// predictors there is: the tokens that inverted this scorer were fresh scams tradeable on a DEX but
+// not yet analysed by GoPlus. `pairCreatedAt` is a real on-chain signal of when the token first got
+// a market. We take the OLDEST pair on the matching chain as the token's age (earliest market) and
+// the DEEPEST pair's liquidity (its primary market). Fresh + thin is the pull-rug profile; old +
+// deep is genuine positive evidence. Every field degrades to null on any miss — unknown, not safe.
+const DEXSCREENER_CHAINS: Record<string, string> = {
+  "8453": "base", "1": "ethereum", "56": "bsc", "137": "polygon", "42161": "arbitrum", "10": "optimism",
+};
+async function dexMarket(chainId: string, addr: string): Promise<{ listed: boolean; ageDays: number | null; liquidityUsd: number | null; volume24h: number | null }> {
+  const slug = DEXSCREENER_CHAINS[chainId];
+  if (!slug) return { listed: false, ageDays: null, liquidityUsd: null, volume24h: null };
+  const j = await cached(`ds:${chainId}:${addr}`, () =>
+    getJson(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(addr)}`),
+  ).catch(() => null);
+  const pairs = Array.isArray(j?.pairs) ? j.pairs.filter((p: any) => p?.chainId === slug) : [];
+  if (!pairs.length) return { listed: false, ageDays: null, liquidityUsd: null, volume24h: null };
+  let oldestMs = Infinity, maxLiq = 0, vol = 0;
+  for (const p of pairs) {
+    const created = Number(p.pairCreatedAt); // DexScreener returns epoch MILLISECONDS
+    if (Number.isFinite(created) && created > 0) oldestMs = Math.min(oldestMs, created);
+    const liq = Number(p.liquidity?.usd);
+    if (Number.isFinite(liq) && liq > maxLiq) { maxLiq = liq; vol = Number(p.volume?.h24) || 0; }
+  }
+  const ageDays = Number.isFinite(oldestMs) ? (Date.now() - oldestMs) / 86400000 : null;
+  return { listed: true, ageDays, liquidityUsd: maxLiq || null, volume24h: vol || null };
+}
+
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 // Holder count at/above which a token is treated as "established" — its LP-lock
 // status stops being a first-class rug signal (blue chips shouldn't false-flag).
@@ -199,9 +232,9 @@ export async function safetyReport(chainKey: string, address: string) {
   const addr = address.toLowerCase();
 
   // Independent sources in parallel: static (GoPlus) + dynamic (Honeypot.is) + two curated GitHub
-  // lists (known-scam blocklist, reputable allowlist). All four are keyless; each .catch keeps a
-  // single upstream hiccup from ever breaking a paid call.
-  const [gp, hp, trusted, scamLookup] = await Promise.all([
+  // lists (known-scam blocklist, reputable allowlist) + DEX market age/liquidity (DexScreener). All
+  // keyless; each .catch keeps a single upstream hiccup from ever breaking a paid call.
+  const [gp, hp, trusted, scamLookup, dex] = await Promise.all([
     cached(`gp:${chainId}:${addr}`, () =>
       getJson(
         `https://api.gopluslabs.io/api/v1/token_security/${encodeURIComponent(chainId)}` +
@@ -211,6 +244,7 @@ export async function safetyReport(chainKey: string, address: string) {
     honeypotSim(chainId, addr).catch(() => null),
     isReputableToken(chainId, addr).catch(() => false),
     scamMap().catch(() => null),
+    dexMarket(chainId, addr).catch(() => null),
   ]);
 
   const t = gp?.result?.[addr];
@@ -231,7 +265,10 @@ export async function safetyReport(chainKey: string, address: string) {
     : scamOnCreator !== undefined ? { who: "deployer", comment: scamOnCreator }
     : null;
 
-  if (!t && !hp && !bs && !scam) return null; // no source had anything -> 404
+  // A DexScreener market means the token is tradeable RIGHT NOW even if no scanner has analysed it —
+  // the exact fresh-token case that inverted the scorer. Score it (as fresh/unverified) rather than
+  // 404, so a brand-new tradeable scam gets a real warning instead of silence.
+  if (!t && !hp && !bs && !scam && !dex?.listed) return null; // no source had anything -> 404
 
   // LP-LOCK: require a MEANINGFUL locked share, not merely "some holder is flagged locked".
   //
@@ -321,7 +358,20 @@ export async function safetyReport(chainKey: string, address: string) {
     }
   }
 
-  const allChecks = [...staticChecks, ...dynChecks];
+  // ── Market signals (DexScreener age + liquidity) — the dimension no contract scan can see ──
+  // Age is one of the strongest rug predictors: a pair created hours ago is the fresh-rug window,
+  // and it compounds with the unverified/blind penalties below for exactly the fresh scams that
+  // inverted the scorer. Thin absolute liquidity is what makes a pull cheap. Kept out of staticRisk
+  // (the GoPlus-only figure the agreement factor uses) — this is a separate, independent method.
+  const dexAgeDays = dex?.listed ? dex.ageDays : null;
+  const dexLiq = dex?.listed ? dex.liquidityUsd : null;
+  const marketChecks: Array<[string, boolean, number]> = [
+    [`DEX pair created under 24h ago — brand-new, the fresh-rug window`, dexAgeDays != null && dexAgeDays < 1, 30],
+    [`DEX pair created under 7 days ago — very young token`, dexAgeDays != null && dexAgeDays >= 1 && dexAgeDays < 7, 15],
+    [`DEX liquidity under $5k — thin enough to pull cheaply (liquidity-pull rug vector)`, dexLiq != null && dexLiq < 5000, 20],
+  ];
+
+  const allChecks = [...staticChecks, ...dynChecks, ...marketChecks];
   const redFlags = allChecks.filter(([, hit]) => hit).map(([label]) => label);
   const staticRisk = staticChecks.reduce((s, [, hit, w]) => s + (hit ? w : 0), 0);
   let risk = Math.min(100, allChecks.reduce((s, [, hit, w]) => s + (hit ? w : 0), 0));
@@ -360,6 +410,8 @@ export async function safetyReport(chainKey: string, address: string) {
     ["liquidity locked", lpLocked === true],
     ["10k+ holders", (Number(t?.holder_count) || 0) >= 10000],
     ["on a reputable token list (Uniswap default) — vetted, essentially never a fresh rug", trusted === true],
+    ["DEX pair over 180 days old — survived long past the typical rug window", dexAgeDays != null && dexAgeDays > 180],
+    ["deep DEX liquidity over $100k — not a single thin pool that can be pulled cheaply", dexLiq != null && dexLiq >= 100000],
   ];
   // Blockscout counts as positive evidence when it can vouch for the contract — a verified contract
   // with a real holder base is a genuine green signal even without GoPlus.
@@ -411,6 +463,7 @@ export async function safetyReport(chainKey: string, address: string) {
     bs ? "blockscout (verification + holders)" : null,
     scamLookup ? "known-scam blocklist (mew ethereum-lists)" : null,
     trusted ? "reputable token list (uniswap default)" : null,
+    dex?.listed ? "dexscreener (pair age + liquidity)" : null,
   ].filter(Boolean) as string[];
   const confidence = needsReview ? "low (sources disagree)" : haveBoth ? "high" : "medium (single source)";
 
@@ -449,6 +502,8 @@ export async function safetyReport(chainKey: string, address: string) {
       creator_address: t?.creator_address ?? null,
       on_reputable_list: trusted === true, // Uniswap default token list
       known_scam_flagged: scam ? scam.who : false, // "token address" | "deployer" | false
+      dex_pair_age_days: dexAgeDays != null ? Math.round(dexAgeDays * 10) / 10 : null, // DexScreener oldest pair
+      dex_liquidity_usd: dexLiq, // DexScreener deepest-pool liquidity
     },
     sources,
     // Our own measured accuracy for THIS verdict, attached to the thing the buyer is paying for.
