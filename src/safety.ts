@@ -88,26 +88,49 @@ async function blockscout(chainId: string, addr: string) {
   };
 }
 
-// KNOWN-SCAM BLOCKLIST (free, NO key) — github.com/MyEtherWallet/ethereum-lists darklist, added
-// 2026-07-27. ~650 human-curated addresses that ALREADY stole funds, each carrying a written reason.
-// This is a different KIND of signal from every scanner above: not "the contract shape looks risky"
-// but "this exact address is a documented scammer". A hit is therefore a HARD danger gate — the
-// highest-confidence red flag the scorer can get. We check both the token address AND its deployer
-// (GoPlus creator_address), because the collector/deployer EOAs are exactly what this list catalogues.
-// The list is eth-mainnet-curated, so a MISS means nothing (partial cross-chain coverage) — absence
-// is NEVER scored as safety. Scammers reuse addresses across chains, so hits on Base do occur.
-const SCAM_DARKLIST_URL =
+// KNOWN-BAD ADDRESS LISTS (free, NO key) — three independent curated blocklists merged, ~3,300
+// addresses total. This is a different KIND of signal from every scanner above: not "the contract
+// shape looks risky" but "this exact address is documented bad". A hit is a HARD danger gate — the
+// highest-confidence red flag the scorer can get. We check the token address AND its deployer (GoPlus
+// creator_address), because the drainer/collector/deployer EOAs are exactly what these lists catalogue.
+//   • OFAC (US Treasury sanctions, ~97) — the most severe; a sanctioned address is illegal to transact.
+//   • MyEtherWallet ethereum-lists darklist (~650) — human-curated, each with a written reason.
+//   • ScamSniffer scam database (~2,530) — the large, actively-maintained drainer/scam wallet set.
+// Each list is cached and catch-guarded on its OWN, so one source failing never blanks the others.
+// All are eth-curated but scam/sanctioned addresses are reused across chains, so Base hits occur; a
+// MISS still means nothing (partial coverage) — absence is NEVER scored as safety.
+const MEW_DARKLIST_URL =
   "https://raw.githubusercontent.com/MyEtherWallet/ethereum-lists/master/src/addresses/addresses-darklist.json";
-let _scamMemo: { src: any[]; map: Map<string, string> } | null = null;
-async function scamMap(): Promise<Map<string, string> | null> {
-  const list = await cached("scamlist:mew-darklist", () => getJson(SCAM_DARKLIST_URL)).catch(() => null);
-  if (!Array.isArray(list)) return null; // fetch failed -> UNKNOWN, never "clean"
-  if (!_scamMemo || _scamMemo.src !== list) {
-    const map = new Map<string, string>();
-    for (const e of list) if (e?.address) map.set(String(e.address).toLowerCase(), String(e.comment || ""));
-    _scamMemo = { src: list, map };
-  }
-  return _scamMemo.map;
+const SCAMSNIFFER_URL =
+  "https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/address.json";
+const OFAC_URL =
+  "https://raw.githubusercontent.com/ultrasoundmoney/ofac-ethereum-addresses/main/data.csv";
+
+/** Fetch raw text with the same timeout policy as getJson (OFAC ships CSV, not JSON). */
+async function fetchText(url: string): Promise<string> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "user-agent": "x402-seller/0.1 (+safety)" } });
+  if (!res.ok) throw new Error(`upstream ${res.status} for ${url}`);
+  return res.text();
+}
+
+// Merge order = precedence on overlap (last wins): ScamSniffer < MyEtherWallet < OFAC, so the most
+// severe/specific label survives. Rebuilt per call from the three SWR-cached sources (~3.3k Map.set,
+// sub-millisecond). Returns null only when ALL three failed to load (so "source consulted" stays honest).
+async function knownBadMap(): Promise<Map<string, { src: string; reason: string }> | null> {
+  const [mew, ss, ofac] = await Promise.all([
+    cached("badlist:mew", () => getJson(MEW_DARKLIST_URL)).catch(() => null),
+    cached("badlist:scamsniffer", () => getJson(SCAMSNIFFER_URL)).catch(() => null),
+    cached("badlist:ofac", async () =>
+      (await fetchText(OFAC_URL)).trim().split(/\r?\n/).slice(1)
+        .map((l) => l.split(",")[0].trim().toLowerCase())
+        .filter((a) => EVM_ADDR.test(a)),
+    ).catch(() => null),
+  ]);
+  const map = new Map<string, { src: string; reason: string }>();
+  if (Array.isArray(ss)) for (const a of ss) { const k = String(a).toLowerCase(); if (EVM_ADDR.test(k)) map.set(k, { src: "ScamSniffer", reason: "flagged in ScamSniffer's scam/drainer database" }); }
+  if (Array.isArray(mew)) for (const e of mew) if (e?.address) map.set(String(e.address).toLowerCase(), { src: "MyEtherWallet", reason: String(e.comment || "listed on the MyEtherWallet darklist") });
+  if (Array.isArray(ofac)) for (const a of ofac) map.set(String(a).toLowerCase(), { src: "OFAC", reason: "OFAC-SANCTIONED by the US Treasury — illegal to transact" });
+  return map.size ? map : null;
 }
 
 // REPUTABLE ALLOWLIST (free, NO key) — Uniswap default token list, added 2026-07-27. The GREEN
@@ -231,10 +254,10 @@ export async function safetyReport(chainKey: string, address: string) {
   const chainId = GOPLUS_CHAINS[chainKey]; // validated upstream
   const addr = address.toLowerCase();
 
-  // Independent sources in parallel: static (GoPlus) + dynamic (Honeypot.is) + two curated GitHub
-  // lists (known-scam blocklist, reputable allowlist) + DEX market age/liquidity (DexScreener). All
+  // Independent sources in parallel: static (GoPlus) + dynamic (Honeypot.is) + curated GitHub lists
+  // (3-source known-bad blocklist, reputable allowlist) + DEX market age/liquidity (DexScreener). All
   // keyless; each .catch keeps a single upstream hiccup from ever breaking a paid call.
-  const [gp, hp, trusted, scamLookup, dex] = await Promise.all([
+  const [gp, hp, trusted, badLookup, dex] = await Promise.all([
     cached(`gp:${chainId}:${addr}`, () =>
       getJson(
         `https://api.gopluslabs.io/api/v1/token_security/${encodeURIComponent(chainId)}` +
@@ -243,7 +266,7 @@ export async function safetyReport(chainKey: string, address: string) {
     ).catch(() => null),
     honeypotSim(chainId, addr).catch(() => null),
     isReputableToken(chainId, addr).catch(() => false),
-    scamMap().catch(() => null),
+    knownBadMap().catch(() => null),
     dexMarket(chainId, addr).catch(() => null),
   ]);
 
@@ -258,11 +281,11 @@ export async function safetyReport(chainKey: string, address: string) {
   // hard danger regardless of everything else, so it must be able to produce a verdict even when no
   // scanner has data on the token (a fresh malicious contract) — hence it counts against the 404 gate.
   const creator = t?.creator_address ? String(t.creator_address).toLowerCase() : null;
-  const scamOnAddr = scamLookup?.get(addr);
-  const scamOnCreator = creator ? scamLookup?.get(creator) : undefined;
+  const badOnAddr = badLookup?.get(addr);
+  const badOnCreator = creator ? badLookup?.get(creator) : undefined;
   const scam =
-    scamOnAddr !== undefined ? { who: "token address", comment: scamOnAddr }
-    : scamOnCreator !== undefined ? { who: "deployer", comment: scamOnCreator }
+    badOnAddr ? { who: "token address", ...badOnAddr }
+    : badOnCreator ? { who: "deployer", ...badOnCreator }
     : null;
 
   // A DexScreener market means the token is tradeable RIGHT NOW even if no scanner has analysed it —
@@ -385,9 +408,7 @@ export async function safetyReport(chainKey: string, address: string) {
   // not inference from contract shape, but a human-curated record that this address already stole.
   if (scam) {
     risk = 100;
-    redFlags.push(
-      `${scam.who} is on the MyEtherWallet known-scam blocklist${scam.comment ? ` — "${scam.comment.slice(0, 140)}"` : ""}`,
-    );
+    redFlags.push(`${scam.who} is on a known-bad list [${scam.src}] — ${scam.reason.slice(0, 150)}`);
   }
 
   // ── AGREEMENT FACTOR: static vs dynamic disagreement is itself a signal ──
@@ -461,7 +482,7 @@ export async function safetyReport(chainKey: string, address: string) {
     t ? "goplus (static)" : null,
     hp ? "honeypot.is (dynamic sim)" : null,
     bs ? "blockscout (verification + holders)" : null,
-    scamLookup ? "known-scam blocklist (mew ethereum-lists)" : null,
+    badLookup ? "known-bad address lists (ofac + mew + scamsniffer)" : null,
     trusted ? "reputable token list (uniswap default)" : null,
     dex?.listed ? "dexscreener (pair age + liquidity)" : null,
   ].filter(Boolean) as string[];
@@ -501,7 +522,7 @@ export async function safetyReport(chainKey: string, address: string) {
       holder_count: Number(t?.holder_count) || null,
       creator_address: t?.creator_address ?? null,
       on_reputable_list: trusted === true, // Uniswap default token list
-      known_scam_flagged: scam ? scam.who : false, // "token address" | "deployer" | false
+      known_scam_flagged: scam ? `${scam.who} [${scam.src}]` : false, // e.g. "deployer [OFAC]" | false
       dex_pair_age_days: dexAgeDays != null ? Math.round(dexAgeDays * 10) / 10 : null, // DexScreener oldest pair
       dex_liquidity_usd: dexLiq, // DexScreener deepest-pool liquidity
     },
