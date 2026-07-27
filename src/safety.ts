@@ -8,7 +8,8 @@
  * single free source combines:
  *
  *   1. GoPlus (static bytecode analysis) — honeypot heuristics, taxes, mint/owner
- *      privileges, LP holders, holder distribution, "same-creator honeypot" flag.
+ *      privileges, LP holders, "same-creator honeypot" flag, and HOLDER CONCENTRATION
+ *      (insider dump risk from the top-holder list, excluding contracts + burn/dead addresses).
  *   2. Honeypot.is (DYNAMIC simulation) — actually executes a simulated buy AND
  *      sell on-chain, so it catches sell-traps the static scanner misses and
  *      clears benign tokens GoPlus over-flags. Confirmed to cover ETH/BSC/Base.
@@ -329,6 +330,31 @@ export async function safetyReport(chainKey: string, address: string) {
     (String(t?.owner_address ?? "") === "" || /^0x0+$/.test(String(t?.owner_address ?? "")));
   const ow = (w: number) => (renounced ? Math.round(w * 0.4) : w); // discount owner-power weight
 
+  // ── HOLDER CONCENTRATION (insider dump risk) from the GoPlus top-holders array we already fetch ──
+  // A float held by a few wallets is a classic rug/dump setup the honeypot sim and taxes can't see.
+  // We measure only INSIDER-dumpable supply: exclude is_contract holders (LP/protocol/bridge — not an
+  // insider's to dump) AND burn/dead/lock addresses (supply that is gone, not held). The exclusion is
+  // essential: SHIB's #1 holder is 0xdead at 41% (tag "Dead"); counting it would flag a healthy token.
+  // Exchange hot wallets are sometimes untagged and can't be perfectly excluded, so thresholds stay
+  // conservative — legit tokens' largest real wallet is low (USDC ~3.8%, PEPE ~8.6%), so a single
+  // non-contract, non-burn wallet over 15% is already unusual and over 30% is a strong signal.
+  const isBurnish = (a: string, tag: string) =>
+    /^0x0+$/.test(a) || /^0x0*dead/i.test(a) || /\b(dead|burn|null|lock)\b/i.test(tag || "");
+  const holderList: any[] = Array.isArray(t?.holders) ? t!.holders : [];
+  let largestWalletShare = 0; // fraction 0..1, largest single insider wallet
+  let insiderClusterShare = 0; // fraction 0..1, summed insider (non-contract, non-burn) top holders
+  for (const h of holderList) {
+    if (String(h?.is_contract) === "1") continue;
+    const a = String(h?.address ?? "");
+    if (isBurnish(a, String(h?.tag ?? ""))) continue;
+    const p = Number(h?.percent) || 0;
+    insiderClusterShare += p;
+    if (p > largestWalletShare) largestWalletShare = p;
+  }
+  const largestWalletPct = Math.round(largestWalletShare * 1000) / 10;
+  const insiderClusterPct = Math.round(insiderClusterShare * 1000) / 10;
+  const haveHolders = holderList.length > 0;
+
   // ── Static red flags (GoPlus), each weighted toward the 0-100 risk score ──
   const staticChecks: Array<[string, boolean, number]> = t
     ? [
@@ -355,6 +381,13 @@ export async function safetyReport(chainKey: string, address: string) {
         // their LP-lock status matters far less and they shouldn't false-flag.
         ["LP not verified-locked on a small/new token (liquidity-pull rug vector)",
           lpLocked !== true && (Number(t.holder_count) || 0) < HOLDER_ESTABLISHED, 30],
+        // HOLDER CONCENTRATION — insider dump risk (contracts + burns excluded above).
+        [`one wallet holds ${largestWalletPct}% of supply (insider can dump the market)`,
+          haveHolders && largestWalletShare >= 0.30, 25],
+        [`one wallet holds ${largestWalletPct}% of supply`,
+          haveHolders && largestWalletShare >= 0.15 && largestWalletShare < 0.30, 10],
+        [`top wallets hold ${insiderClusterPct}% of supply between them (concentrated float)`,
+          haveHolders && insiderClusterShare >= 0.70, 15],
       ]
     : [];
 
@@ -433,6 +466,7 @@ export async function safetyReport(chainKey: string, address: string) {
     ["on a reputable token list (Uniswap default) — vetted, essentially never a fresh rug", trusted === true],
     ["DEX pair over 180 days old — survived long past the typical rug window", dexAgeDays != null && dexAgeDays > 180],
     ["deep DEX liquidity over $100k — not a single thin pool that can be pulled cheaply", dexLiq != null && dexLiq >= 100000],
+    ["float is well distributed — largest real wallet under 5% of supply", haveHolders && largestWalletShare < 0.05],
   ];
   // Blockscout counts as positive evidence when it can vouch for the contract — a verified contract
   // with a real holder base is a genuine green signal even without GoPlus.
@@ -525,6 +559,8 @@ export async function safetyReport(chainKey: string, address: string) {
       known_scam_flagged: scam ? `${scam.who} [${scam.src}]` : false, // e.g. "deployer [OFAC]" | false
       dex_pair_age_days: dexAgeDays != null ? Math.round(dexAgeDays * 10) / 10 : null, // DexScreener oldest pair
       dex_liquidity_usd: dexLiq, // DexScreener deepest-pool liquidity
+      largest_wallet_pct: haveHolders ? largestWalletPct : null, // insider concentration (contracts/burns excluded)
+      top_wallets_pct: haveHolders ? insiderClusterPct : null,
     },
     sources,
     // Our own measured accuracy for THIS verdict, attached to the thing the buyer is paying for.
