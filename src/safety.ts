@@ -30,7 +30,8 @@ import { cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
-import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
+import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
+
 import { verdictHonesty } from "./calib-cache.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
@@ -167,7 +168,7 @@ export async function safetyReport(chainKey: string, address: string) {
   const ow = (w: number) => (renounced ? Math.round(w * 0.4) : w); // discount owner-power weight
 
   // ── Static red flags (GoPlus), each weighted toward the 0-100 risk score ──
-  const staticChecks: Array<[string, boolean, number]> = t
+  let staticChecks: Array<[string, boolean, number]> = t
     ? [
         ["honeypot: holders cannot sell (static)", flag(t.is_honeypot), 100],
         ["cannot sell all tokens", flag(t.cannot_sell_all), 60],
@@ -194,6 +195,27 @@ export async function safetyReport(chainKey: string, address: string) {
           lpLocked !== true && (Number(t.holder_count) || 0) < HOLDER_ESTABLISHED, 30],
       ]
     : [];
+
+  // MISSING-GOPLUS GATE (S-030): when GoPlus has no data (t is null) but
+  // honeypot.is returned results, token is real but unvetted. Small tokens
+  // without GoPlus LP data are liquidity-pull rugs. Risk 0 verdict was the
+  // inversion bug. Add baseline caution for low holder unvetted tokens.
+  if (!t && hp) {
+    const hpHolders = hp.holders_tested ?? 0;
+    if (hpHolders > 0 && hpHolders < HOLDER_ESTABLISHED) {
+      staticChecks.push([
+        "no GoPlus data on small token (unvetted, liquidity-pull risk)",
+        true,
+        30,
+      ]);
+    } else if (hpHolders === 0) {
+      staticChecks.push([
+        "no static or dynamic holder data (completely unvetted)",
+        true,
+        25,
+      ]);
+    }
+  }
 
   // ── Dynamic signals (Honeypot.is live buy/sell simulation) ──
   const dynChecks: Array<[string, boolean, number]> = [];
