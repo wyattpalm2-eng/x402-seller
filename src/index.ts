@@ -790,11 +790,27 @@ function landingPage(): string {
     .slice(0, 5)
     .map((r: any) => `<li><code>${esc(r.token ?? String(r.address).slice(0, 10))}</code> — flagged <b>${esc(r.our_verdict)}</b> (risk ${esc(r.risk_score)}), then rugged: ${esc(r.liquidity_remaining_pct ?? "?")}% of liquidity left after ${esc(r.graded_after_h)}h</li>`)
     .join("");
+  // Headline the DISCRIMINATION, not the recall. "431/530 rugs flagged" reads like a win but we
+  // flag ~90% of everything, so that recall is worse than flagging at random — a true number that
+  // misleads. What a buyer needs is whether a flag beats a clear, and when it does not we say so
+  // on the front page rather than let the flattering number stand.
+  const _tf = Number(s.rugs_we_flagged ?? 0) + Number(s.false_alarms ?? 0);
+  const _cleared = Math.max(0, Number(s.graded ?? 0) - _tf);
+  const _pFlag = _tf > 0 ? (100 * Number(s.rugs_we_flagged ?? 0)) / _tf : 0;
+  const _pClear = _cleared > 0 ? (100 * Number(s.rugs_we_missed ?? 0)) / _cleared : 0;
+  const _inverted = _tf > 0 && _cleared > 0 && _pClear > _pFlag;
   const proof =
     s.graded > 0
       ? `<p><b>Live track record</b> (self-graded, misses included — <a href="/track-record">full data</a>):
-         ${s.rugs_we_flagged}/${s.rugs_observed} rugs flagged before they happened · ${s.rugs_we_missed} missed ·
-         ${s.false_alarms} false alarms · ${s.graded} calls graded.</p>${catches ? `<ul>${catches}</ul>` : ""}`
+         ${s.graded} calls graded · flagged tokens rugged ${_pFlag.toFixed(1)}% · tokens we called ok rugged ${_pClear.toFixed(1)}%.</p>
+         ${_inverted
+           ? `<p style="border:1px solid #a33;background:#2a1414;border-radius:8px;padding:10px 12px">
+              <b style="color:#ff8a8a">⚠ Our score is currently INVERTED — do not trade on the "ok" verdict.</b>
+              A token we call ok rugs ${_pClear.toFixed(1)}% of the time versus ${_pFlag.toFixed(1)}% for one we flag, so a clear
+              from us is presently more dangerous than a warning. Cause diagnosed and fixes deployed 2026-07-27;
+              they need 6+ hours of elapsed reality to grade. <a href="/accuracy">The full working is public.</a>
+              We would rather show you this than sell you a flattering recall number.</p>`
+           : ""}${catches ? `<ul>${catches}</ul>` : ""}`
       : `<p><b>Live track record</b>: grading in progress — every 30min we score fresh Base launches with the exact
          paid scorer and grade ourselves 6h later. <a href="/track-record">Watch it build</a> (${s.calls_recorded} calls recorded, ${s.pending} pending grade).</p>`;
   const truthLinks = `<p><b>The Truth Engine</b> — every endpoint here grades itself against reality, in public:

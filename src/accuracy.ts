@@ -38,6 +38,24 @@ export function accuracyPage(req: Request, res: Response): void {
   const falseAlarms = Number(st.false_alarms ?? 0);
   const recall = pct(flagged, rugs);
 
+  // ── RECALL ALONE IS A MISLEADING NUMBER, so compute the context that judges it ──
+  // We were publishing "we flagged 431 of 530 rugs (81%)" as a success. But we flag ~90% of
+  // EVERYTHING, and flagging 90% at random would catch ~90% of rugs — so 81% recall is actually
+  // WORSE than chance. The number that decides whether a verdict is worth anything is not recall,
+  // it is whether a flag raises your risk versus a clear. Right now it lowers it: our "ok" tokens
+  // rug about twice as often as our flagged ones. Publishing recall without this context is the
+  // kind of true-but-misleading statistic that our own No-Fakes rule exists to forbid.
+  const totalGraded = Number(st.graded ?? 0);
+  const totalFlagged = flagged + falseAlarms;
+  const cleared = Math.max(0, totalGraded - totalFlagged);
+  const flagRatePct = totalGraded > 0 ? (100 * totalFlagged) / totalGraded : 0;
+  const rugIfFlagged = totalFlagged > 0 ? (100 * flagged) / totalFlagged : 0;
+  const rugIfClear = cleared > 0 ? (100 * missed) / cleared : 0;
+  const baseRate = totalGraded > 0 ? (100 * rugs) / totalGraded : 0;
+  // inverted = a token we cleared is MORE likely to rug than one we flagged
+  const inverted = cleared > 0 && totalFlagged > 0 && rugIfClear > rugIfFlagged;
+  const r1 = (n: number) => n.toFixed(1);
+
   // misses = we said ok, it rugged. catches = we flagged (warning/danger), it rugged.
   const badOutcome = (r: any) => r.outcome === "rugged" || r.outcome === "dumped";
   const misses = graded.filter((r) => r.our_verdict === "ok" && badOutcome(r)).slice(0, 8);
@@ -95,8 +113,20 @@ export function accuracyPage(req: Request, res: Response): void {
 <div class="why">
   <div><b>Nobody else does this.</b> No other x402 data seller grades its own paid output against reality in public. If you're an agent deciding who to trust with a cent per call, receipts beat claims.</div>
   <div><b>The misses are the lesson.</b> Almost every miss is a clean-contract token whose team pulled liquidity — a rug NO point-in-time contract scan can foresee. That's exactly why the paid <code>/vet</code> fuses the contract score with our self-collected <code>/onchain/liquidity</code> drain time-series: the drain is visible while it happens.</div>
-  <div><b>The honest pitch is recall, not perfection:</b> we flag roughly 3 of 4 tokens that go on to rug — before they do — and we over-warn rather than under-warn (false alarms cost a skipped trade; a miss costs the position).</div>
+  <div><b>Recall alone is a misleading number, so here is the number that matters.</b> We flag ${r1(flagRatePct)}% of <em>everything</em>. Flagging that share at random would catch about ${r1(flagRatePct)}% of rugs by chance, so our ${esc(recall)} recall is <em>not</em> the achievement it looks like. What decides whether a verdict is worth paying for is simply this: does a flag raise your risk compared with a clear?</div>
 </div>
+
+${inverted ? `<div class="why" style="border:1px solid #a33;background:#2a1414;border-radius:10px;padding:14px 16px;margin-top:14px">
+  <div><b style="color:#ff8a8a">⚠ Right now our score is INVERTED, and we would rather you heard it from us.</b></div>
+  <div style="margin-top:8px">
+    Of the tokens we <b>flagged</b>, ${r1(rugIfFlagged)}% went on to rug.<br>
+    Of the tokens we called <b>ok</b>, <b style="color:#ff8a8a">${r1(rugIfClear)}%</b> went on to rug.<br>
+    Base rate across everything we scored: ${r1(baseRate)}%.
+  </div>
+  <div style="margin-top:8px"><b>So a "clear" from us is currently more dangerous than a warning.</b> Do not trade on the <code>ok</code> verdict. We diagnosed the cause — a token no scanner had data on scored zero risk and we printed that as "safe", when an unanalysed token with real liquidity is exactly what rugs — and fixes shipped on 2026-07-27. They are deployed but <b>not yet graded</b>; grading needs 6+ hours of elapsed reality, which is the same slowness that makes this record hard to fake. This banner clears itself automatically when the numbers above cross over. We are not going to quietly wait for that and keep selling you a recall stat in the meantime.</div>
+</div>` : `<div class="why" style="margin-top:14px">
+  <div><b>Does a flag raise your risk?</b> Flagged tokens rug ${r1(rugIfFlagged)}% of the time; ones we called ok rug ${r1(rugIfClear)}%, against a ${r1(baseRate)}% base rate. A flag is worth more than a coin toss — which is the only claim worth making, and it is measured, not asserted.</div>
+</div>`}
 
 <h2>Recent misses — we said "ok", it rugged</h2>
 ${misses.length ? `<table>${misses.map(row).join("")}</table>` : `<p class="dim">No recent ok-verdict misses in the last 50 graded calls.</p>`}
