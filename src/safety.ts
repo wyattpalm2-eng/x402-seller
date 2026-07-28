@@ -535,6 +535,19 @@ export async function safetyReport(chainKey: string, address: string) {
     redFlags.push("clean of red flags, but nothing POSITIVE verifies it either (no passed sell-sim, few green signals) — unproven, not safe");
   }
 
+  // ── LIQUIDITY FLOOR (S-038 cause b, 2026-07-28) — dead tokens are not dangerous ──
+  // 60% of our danger-band calls were sub-$2k dead tokens that cannot rug (nobody pulls $200 of
+  // liquidity). They inflate the danger band's success rate, which is why /calibration shows the
+  // score inverted: danger barely rugs because most of what we call dangerous is already dead.
+  // Fix: cap to "warning" when the only risk is low-liquidity/market signals on a token too small
+  // to rug. Hard gates (honeypot sim-fail, cannot-sell, known scam) stay danger regardless.
+  const DEAD_LIQUIDITY_FLOOR = 2000; // USD -- below this, a token is dead, not a rug target
+  if (verdict === "danger" && !hardTrap && !scam && dexLiq != null && dexLiq < DEAD_LIQUIDITY_FLOOR) {
+    verdict = "warning";
+    if (risk > 55) risk = 55; // keep it in the warning band, not the danger threshold
+    redFlags.push(`liquidity under $${DEAD_LIQUIDITY_FLOOR} (${dexLiq < 1000 ? Math.round(dexLiq) : "$" + Math.round(dexLiq/1000) + "k"}) — too small to rug-pull, downgraded from danger to warning`);
+  }
+
   const sources = [
     t ? "goplus (static)" : null,
     hp ? "honeypot.is (dynamic sim)" : null,
