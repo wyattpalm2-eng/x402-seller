@@ -395,15 +395,23 @@ app.get("/calibration", freeRateLimit, (_req, res) => res.json(calibration(rawRo
 app.get("/signals", freeRateLimit, (_req, res) => res.json(signalLift(rawRows())));
 app.get("/relaunches", freeRateLimit, (_req, res) => res.json(relaunchStats(rawRows())));
 
-// FREE live demo: ONE real /vet per IP per hour (global daily cap). Agents
-// integrate what they can test end-to-end without money — the paid calls come
-// after it's wired in. The demo runs the exact paid code path, no watered-down
-// output; the limiter (not a paywall) is the only difference.
-const _demoLast = new Map<string, number>();
+// FREE live demo. Agents integrate what they can test end-to-end without money — the paid calls
+// come after it's wired in. The demo runs the exact paid code path, no watered-down output; the
+// limiter (not a paywall) is the only difference.
+//
+// 2026-07-27 — WIDENED FROM 1/HOUR, and the evidence says it was costing us adoption:
+// nobody can evaluate a rug-checker at one token per hour. Deciding whether to trust a risk score
+// means trying it on a handful of tokens you already know the answer for — that is a five-minute
+// job, and the old limit stretched it across half a day, so every evaluator gave up before
+// forming an opinion. The funnel showed it: 27 views, 3 unique callers, 0 buys.
+// Meanwhile the GLOBAL cap of 200/day was running at roughly 1.5% utilisation — we were
+// rationing a budget nobody was consuming. Cost risk is unchanged because the global cap is
+// untouched and still the real backstop; this only stops us throttling the first honest evaluator.
+const _demoUsed = new Map<string, number>();     // ip -> calls used today
 let _demoDay = "";
 let _demoCount = 0;
-const DEMO_PER_IP_MS = 60 * 60 * 1000;
-const DEMO_DAILY_CAP = 200;
+const DEMO_PER_IP_DAY = 15;                      // enough to actually form an opinion
+const DEMO_DAILY_CAP = 200;                      // unchanged global backstop
 app.get("/demo/vet", freeRateLimit, async (req, res) => {
   const q = req.query as Record<string, any>;
   const err = validateVet(q);
@@ -411,29 +419,34 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
   if (q.address === undefined)
     return void res.status(400).json({ error: "bad_request", detail: "usage: /demo/vet?chain=base&address=0x… (or chain=solana&address=<mint>)" });
   const today = new Date().toISOString().slice(0, 10);
-  if (today !== _demoDay) { _demoDay = today; _demoCount = 0; _demoLast.clear(); }
+  if (today !== _demoDay) { _demoDay = today; _demoCount = 0; _demoUsed.clear(); }
   const ip = req.ip || "unknown";
-  const last = _demoLast.get(ip) ?? 0;
-  if (Date.now() - last < DEMO_PER_IP_MS)
+  const used = _demoUsed.get(ip) ?? 0;
+  if (used >= DEMO_PER_IP_DAY)
     return void res.status(429).json({
       error: "demo_limit",
-      detail: "1 free demo vet per hour per caller. The paid endpoint has no limits.",
+      detail: `${DEMO_PER_IP_DAY} free demo vets per caller per day, and you have used them all. The paid endpoint has no limits.`,
       paid_endpoint: "/vet", price: process.env.PRICE_VET || "$0.01",
-      retry_after_s: Math.ceil((DEMO_PER_IP_MS - (Date.now() - last)) / 1000),
+      resets: "00:00 UTC",
     });
   if (_demoCount >= DEMO_DAILY_CAP)
     return void res.status(429).json({ error: "demo_limit", detail: "daily demo budget exhausted — the paid endpoint /vet is always available" });
   try {
     const data = await vetToken(String(q.chain ?? "base").toLowerCase().trim(), String(q.address));
     if (data == null) return void res.status(404).json({ error: "not_found", detail: "no data for that token" });
-    // Consume the slot only on a SUCCESSFUL demo — a 404/502 must not lock the
-    // caller out for an hour (that would sabotage demo→paid conversion).
-    _demoLast.set(ip, Date.now());
+    // Consume the slot only on a SUCCESSFUL demo — a 404/502 must not burn the
+    // caller's allowance (that would sabotage demo→paid conversion).
+    _demoUsed.set(ip, used + 1);
     _demoCount++;
     bumpDemo("vet"); // real-demand signal → /demand
     res.json({
       ...data,
-      demo: { note: "free demo — identical output to the paid /vet, limited to 1/hour", unlimited: "/vet via x402", price: process.env.PRICE_VET || "$0.01" },
+      demo: {
+        note: "free demo — identical output to the paid /vet, no watered-down data",
+        remaining_today: DEMO_PER_IP_DAY - (used + 1),
+        unlimited: "/vet via x402",
+        price: process.env.PRICE_VET || "$0.01",
+      },
     });
   } catch {
     res.status(502).json({ error: "upstream_unavailable" });
@@ -442,7 +455,7 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
 // FREE weather demo, same thesis as /demo/vet: an agent integrates what it can
 // test without money. 1 real consensus per IP per hour, small daily cap, exact
 // paid output. (Own state maps — the vet demo's slots stay independent.)
-const _wDemoLast = new Map<string, number>();
+const _wDemoUsed = new Map<string, number>();
 let _wDemoDay = "";
 let _wDemoCount = 0;
 app.get("/demo/weather", freeRateLimit, async (req, res) => {
@@ -450,15 +463,15 @@ app.get("/demo/weather", freeRateLimit, async (req, res) => {
   const err = validateWeather(q);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   const today = new Date().toISOString().slice(0, 10);
-  if (today !== _wDemoDay) { _wDemoDay = today; _wDemoCount = 0; _wDemoLast.clear(); }
+  if (today !== _wDemoDay) { _wDemoDay = today; _wDemoCount = 0; _wDemoUsed.clear(); }
   const ip = req.ip || "unknown";
-  const last = _wDemoLast.get(ip) ?? 0;
-  if (Date.now() - last < DEMO_PER_IP_MS)
+  const wUsed = _wDemoUsed.get(ip) ?? 0;
+  if (wUsed >= DEMO_PER_IP_DAY)
     return void res.status(429).json({
       error: "demo_limit",
-      detail: "1 free weather consensus per hour per caller. The paid endpoint has no limits.",
+      detail: `${DEMO_PER_IP_DAY} free weather consensus calls per caller per day, and you have used them all. The paid endpoint has no limits.`,
       paid_endpoint: "/weather/consensus", price: process.env.PRICE_WEATHER || "$0.01",
-      retry_after_s: Math.ceil((DEMO_PER_IP_MS - (Date.now() - last)) / 1000),
+      resets: "00:00 UTC",
     });
   if (_wDemoCount >= DEMO_DAILY_CAP)
     return void res.status(429).json({ error: "demo_limit", detail: "daily demo budget exhausted — the paid endpoint /weather/consensus is always available" });
@@ -466,12 +479,12 @@ app.get("/demo/weather", freeRateLimit, async (req, res) => {
     const data = gateConsensus(await weatherHandler({ lat: String(q.lat), lon: String(q.lon) }));
     if (data == null) return void res.status(404).json({ error: "not_found", detail: "fewer than 2 weather sources reachable for those coordinates right now — a consensus of one is not a consensus, try again later" });
     // Slot consumed only on success — a 404/502 must not lock the caller out.
-    _wDemoLast.set(ip, Date.now());
+    _wDemoUsed.set(ip, wUsed + 1);
     _wDemoCount++;
     bumpDemo("weather"); // real-demand signal → /demand
     res.json({
       ...data,
-      demo: { note: "free demo — identical output to the paid /weather/consensus, limited to 1/hour", unlimited: "/weather/consensus via x402", price: process.env.PRICE_WEATHER || "$0.01" },
+      demo: { note: "free demo — identical output to the paid /weather/consensus", remaining_today: DEMO_PER_IP_DAY - (wUsed + 1), unlimited: "/weather/consensus via x402", price: process.env.PRICE_WEATHER || "$0.01" },
     });
   } catch {
     res.status(502).json({ error: "upstream_unavailable" });
@@ -800,7 +813,7 @@ function landingPage(): string {
 no API key — pay per call in USDC (x402). Composite rug scores (static + live buy/sell simulation),
 a self-collected liquidity-drain detector, EVM + Solana. Verdict-first JSON, one call per decision.
 Agents: fetch <code>/llms.txt</code> or <code>/.well-known/x402.json</code> and go.
-<b>Try it free right now:</b> <code>GET /demo/vet?chain=base&address=0x…</code> (1/hour, full paid output).</p>
+<b>Try it free right now:</b> <code>GET /demo/vet?chain=base&address=0x…</code> (15 free per day, full paid output).</p>
 ${proof}
 ${truthLinks}
 <table><tr><th>Endpoint</th><th>Price</th><th>Returns</th></tr>${rows}</table>
