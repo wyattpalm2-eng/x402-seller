@@ -25,6 +25,17 @@
 type Row = any;
 
 const MIN_BAND = 15;   // below this a percentage is noise dressed as a number
+
+// One definition of the score bands, shared by the calibration table and the per-call
+// empiricalRisk() lookup. Two copies would drift, and then the rate we quote on a paid call would
+// silently stop matching the table we publish to justify it.
+const BANDS: Array<{ label: string; lo: number; hi: number }> = [
+  { label: "0-24 (we said: ok)", lo: 0, hi: 24 },
+  { label: "25-39 (we said: warning)", lo: 25, hi: 39 },
+  { label: "40-59 (we said: warning)", lo: 40, hi: 59 },
+  { label: "60-79 (we said: danger)", lo: 60, hi: 79 },
+  { label: "80-100 (we said: danger)", lo: 80, hi: 100 },
+];
 const MIN_SPLIT = 12;  // per side of a signal split
 
 /**
@@ -58,13 +69,7 @@ function pctOf(n: number, d: number): number | null {
 
 /** Score bands, and what actually happened in each — for ONE era. */
 function calibrateEra(graded: Row[]) {
-  const bands = [
-    { label: "0-24 (we said: ok)", lo: 0, hi: 24 },
-    { label: "25-39 (we said: warning)", lo: 25, hi: 39 },
-    { label: "40-59 (we said: warning)", lo: 40, hi: 59 },
-    { label: "60-79 (we said: danger)", lo: 60, hi: 79 },
-    { label: "80-100 (we said: danger)", lo: 80, hi: 100 },
-  ];
+  const bands = BANDS;
   const table = bands.map((b) => {
     const inBand = graded.filter((r) => r.risk_score >= b.lo && r.risk_score <= b.hi);
     const rugged = inBand.filter((r) => r.outcome === "rugged").length;
@@ -105,6 +110,65 @@ function calibrateEra(graded: Row[]) {
     by_verdict: byVerdict,
     bands: table,
     honest_reading: honestReading(table, base),
+  };
+}
+
+/**
+ * EMPIRICAL RISK — what actually happened to the tokens we scored like this one.
+ *
+ * This is the answer to the only question a buyer has ("should I touch this?"), and it is the one
+ * thing here that a competitor cannot assemble on demand at any price: it is computed from months
+ * of our own graded outcomes, and grading costs elapsed time.
+ *
+ * It also does something our verdict currently cannot. The verdict is produced by hand-tuned
+ * weights and those weights are, as of 2026-07-27, measurably inverted. This number is not derived
+ * from the weights at all — it reports the observed rug rate among past calls in the same score
+ * band, so it stays TRUE whichever way the polarity happens to point. A buyer can act on it today.
+ *
+ * Honesty rules baked in, because a rate quoted off three samples is worse than no rate:
+ *  - a band with fewer than MIN_BAND graded calls returns null and says why, never a made-up number
+ *  - lift is stated against the base rate, so "40%" cannot masquerade as a finding when the base
+ *    rate is also 40%
+ *  - only the CURRENT era counts; pooling retired scorers would average over our own bug fixes
+ */
+export function empiricalRisk(rows: Row[], score: number | null | undefined) {
+  if (typeof score !== "number" || !Number.isFinite(score)) return null;
+  const current = ERAS[0]?.label;
+  const graded = rows.filter((r) => r.graded && r.outcome && (!current || eraOf(r.t) === current));
+  if (!graded.length) return null;
+
+  const band = BANDS.find((b) => score >= b.lo && score <= b.hi);
+  if (!band) return null;
+  const inBand = graded.filter((r) => typeof r.risk_score === "number" && r.risk_score >= band.lo && r.risk_score <= band.hi);
+  const rugged = inBand.filter((r) => r.outcome === "rugged").length;
+  const base = pctOf(graded.filter((r) => r.outcome === "rugged").length, graded.length);
+
+  if (inBand.length < MIN_BAND) {
+    return {
+      score_band: band.label,
+      graded_in_band: inBand.length,
+      rug_rate_pct: null,
+      base_rate_pct: base,
+      note: `only ${inBand.length} graded calls in this band — too few to state a rate honestly, so we state none`,
+    };
+  }
+  const rate = pctOf(rugged, inBand.length);
+  const lift = rate != null && base != null && base > 0 ? Math.round((rate / base) * 100) / 100 : null;
+  return {
+    score_band: band.label,
+    graded_in_band: inBand.length,
+    rug_rate_pct: rate,
+    base_rate_pct: base,
+    lift_vs_base: lift,
+    what_this_means:
+      lift == null || rate == null || base == null ? "no base rate available yet"
+      : rate > base ? `tokens in this band rugged ${lift}x as often as the average token we scored`
+      : rate < base ? `tokens in this band rugged LESS often than average (${lift}x) — treat a scary label here with suspicion`
+      : "this band rugged at exactly the base rate, i.e. the score told you nothing here",
+    measured_over: `${graded.length} graded calls from the scorer version serving you now`,
+    caveat:
+      "Observed history, not a promise. It is what happened to past tokens in this score band, " +
+      "measured 6+ hours after each call — not a claim about this specific token's future.",
   };
 }
 

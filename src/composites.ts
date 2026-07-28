@@ -26,6 +26,8 @@ import { derivsSnapshot } from "./derivs.js";
 import { liquidityTrend, track as trackLiquidity } from "./history.js";
 import { getReceiveAddress } from "./wallet.js";
 import { priceToUsd } from "./stats.js";
+import { empiricalRisk } from "./calibration.js";
+import { rawRows } from "./record.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 export const PRICE_VET = process.env.PRICE_VET || "$0.01";
@@ -129,6 +131,11 @@ export async function vetToken(chainKey: string, address: string) {
         }
       : null,
     liquidity_trend: liqTrend, // null until we've collected enough history
+    // WHAT ACTUALLY HAPPENED to the tokens we scored like this one. This is the part of the answer
+    // that is not an opinion: it is measured from our own graded history, so it holds even while
+    // the hand-tuned verdict above is miscalibrated — and it is the one thing a competitor cannot
+    // reproduce on demand, because grading costs months of elapsed time.
+    empirical: empiricalRisk(rawRows(), security?.risk_score ?? null),
     proof: "/track-record", // free: this exact scorer graded against real outcomes
     as_of: new Date().toISOString(),
   };
