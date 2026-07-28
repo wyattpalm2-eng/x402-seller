@@ -45,15 +45,19 @@ export function accuracyPage(req: Request, res: Response): void {
   // it is whether a flag raises your risk versus a clear. Right now it lowers it: our "ok" tokens
   // rug about twice as often as our flagged ones. Publishing recall without this context is the
   // kind of true-but-misleading statistic that our own No-Fakes rule exists to forbid.
+  // Both sides MUST be counted over the same predicate. Deriving the flagged total as
+  // rugs_we_flagged + false_alarms is wrong — those use different predicates (warning+danger vs
+  // danger-only), so it omits every warning that came out fine, inflates the ratio, and hides an
+  // inversion. record.ts now exposes matched pairs; use them.
   const totalGraded = Number(st.graded ?? 0);
-  const totalFlagged = flagged + falseAlarms;
-  const cleared = Math.max(0, totalGraded - totalFlagged);
+  const totalFlagged = Number(st.flagged_total ?? 0);
+  const okTotal = Number(st.ok_total ?? 0);
   const flagRatePct = totalGraded > 0 ? (100 * totalFlagged) / totalGraded : 0;
-  const rugIfFlagged = totalFlagged > 0 ? (100 * flagged) / totalFlagged : 0;
-  const rugIfClear = cleared > 0 ? (100 * missed) / cleared : 0;
+  const rugIfFlagged = totalFlagged > 0 ? (100 * Number(st.flagged_rugged ?? 0)) / totalFlagged : 0;
+  const rugIfClear = okTotal > 0 ? (100 * Number(st.ok_rugged ?? 0)) / okTotal : 0;
   const baseRate = totalGraded > 0 ? (100 * rugs) / totalGraded : 0;
   // inverted = a token we cleared is MORE likely to rug than one we flagged
-  const inverted = cleared > 0 && totalFlagged > 0 && rugIfClear > rugIfFlagged;
+  const inverted = okTotal > 0 && totalFlagged > 0 && rugIfClear > rugIfFlagged;
   const r1 = (n: number) => n.toFixed(1);
 
   // misses = we said ok, it rugged. catches = we flagged (warning/danger), it rugged.

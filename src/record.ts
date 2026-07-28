@@ -326,6 +326,17 @@ export function trackRecordSummary() {
     rugs_we_missed: rugs.filter((r) => r.verdict === "ok").length, // published honestly
     false_alarms: graded.filter((r) => r.verdict === "danger" && r.outcome === "fine").length,
     clean_calls_correct: graded.filter((r) => r.verdict === "ok" && r.outcome === "fine").length,
+
+    // ── The only fields that can honestly answer "is a verdict worth anything?" ──
+    // These exist because deriving them from the fields above is a trap that already bit us:
+    // `rugs_we_flagged` counts warning+danger, but `false_alarms` counts ONLY danger-that-was-fine.
+    // Adding them to get a flagged total silently omits every warning that came out fine — the
+    // large majority — which inflates P(rug|flagged) into a flattering number and hides an
+    // inversion. Compute both sides over the SAME predicate, or do not publish the ratio.
+    flagged_total: graded.filter(flagged).length,
+    flagged_rugged: rugs.filter(flagged).length,
+    ok_total: graded.filter((r) => r.verdict === "ok").length,
+    ok_rugged: rugs.filter((r) => r.verdict === "ok").length,
   };
   return {
     what_this_is:

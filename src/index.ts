@@ -794,11 +794,15 @@ function landingPage(): string {
   // flag ~90% of everything, so that recall is worse than flagging at random — a true number that
   // misleads. What a buyer needs is whether a flag beats a clear, and when it does not we say so
   // on the front page rather than let the flattering number stand.
-  const _tf = Number(s.rugs_we_flagged ?? 0) + Number(s.false_alarms ?? 0);
-  const _cleared = Math.max(0, Number(s.graded ?? 0) - _tf);
-  const _pFlag = _tf > 0 ? (100 * Number(s.rugs_we_flagged ?? 0)) / _tf : 0;
-  const _pClear = _cleared > 0 ? (100 * Number(s.rugs_we_missed ?? 0)) / _cleared : 0;
-  const _inverted = _tf > 0 && _cleared > 0 && _pClear > _pFlag;
+  // Use flagged_total / ok_total, which count both sides over the SAME predicate. Do NOT rebuild
+  // these from rugs_we_flagged + false_alarms: those use different predicates (warning+danger vs
+  // danger-only) and the mismatch silently drops every warning that came out fine, which flatters
+  // the ratio and hides an inversion. That mistake shipped here once already.
+  const _tf = Number(s.flagged_total ?? 0);
+  const _okT = Number(s.ok_total ?? 0);
+  const _pFlag = _tf > 0 ? (100 * Number(s.flagged_rugged ?? 0)) / _tf : 0;
+  const _pClear = _okT > 0 ? (100 * Number(s.ok_rugged ?? 0)) / _okT : 0;
+  const _inverted = _tf > 0 && _okT > 0 && _pClear > _pFlag;
   const proof =
     s.graded > 0
       ? `<p><b>Live track record</b> (self-graded, misses included — <a href="/track-record">full data</a>):
