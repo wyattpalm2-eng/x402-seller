@@ -35,6 +35,7 @@ import { walletFingerprintRouter, walletFingerprintRoutes, walletFingerprintCata
 import { tokenRiskRouter, tokenRiskRoutes, tokenRiskCatalog, validateTokenRisk } from "./ported/token-risk.js";
 import { accuracyPage } from "./accuracy.js";
 import { demandReport, bumpDemo } from "./demand.js";
+import { demandHistory, demandTrend, startDemandHistory } from "./demand-history.js";
 import { startTruth, truthWeatherSummary, truthWeatherRaw } from "./truth.js";
 import { startTruthSignal, truthSignalSummary, truthSignalRaw } from "./truth-signal.js";
 import { companyPage } from "./company.js";
@@ -382,6 +383,10 @@ app.get("/company", freeRateLimit, companyPage(CATALOG.length));
 // Also the crew's demand oracle via bridge telemetry — and it keeps working
 // after /funnel gets FUNNEL_KEY-locked.
 app.get("/demand", freeRateLimit, (_req, res) => res.json(demandReport()));
+// Demand history: /demand resets on every redeploy, so the trend lives in a
+// committed JSONL instead (same durability trick as the track record).
+app.get("/demand/history", freeRateLimit, (_req, res) => res.json(demandTrend()));
+app.get("/demand/history/raw", freeRateLimit, (_req, res) => res.json({ rows: demandHistory() }));
 // THE TRUTH ENGINE: every endpoint grades itself against reality in public.
 app.get("/truth", freeRateLimit, (_req, res) =>
   res.json({
@@ -803,6 +808,7 @@ app.listen(PORT, () => {
   startRecord(); // begin the self-graded track record (/track-record — the public receipts)
   startTruth(); // begin the truth engine (every endpoint grades itself — /truth/weather)
   startTruthSignal(); // second enrollment: /signal + /brief grade their market calls (/truth/signal)
+  startDemandHistory(); // snapshot /demand to a committed JSONL so the trend survives redeploys
 });
 
 function landingPage(): string {

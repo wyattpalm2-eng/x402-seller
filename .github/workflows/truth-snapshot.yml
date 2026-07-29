@@ -29,7 +29,7 @@ jobs:
           set -e
           mkdir -p data
           # ledger pairs: live raw endpoint -> committed file
-          for pair in "truth/weather/raw:data/truth_weather.jsonl" "truth/signal/raw:data/truth_signal.jsonl"; do
+          for pair in "truth/weather/raw:data/truth_weather.jsonl" "truth/signal/raw:data/truth_signal.jsonl" "demand/history/raw:data/demand_history.jsonl"; do
             ep="${pair%%:*}"; path="${pair#*:}"
             ok=""
             for i in 1 2 3 4 5 6; do
@@ -71,7 +71,13 @@ jobs:
         run: |
           git config user.name "truth-bot"
           git config user.email "actions@github.com"
-          git add data/truth_weather.jsonl data/truth_signal.jsonl
+          # Add only ledgers that exist: an endpoint being unreachable makes the loop
+          # above `continue` without writing its file, and a bare `git add` on a
+          # missing path aborts the step — which would take the OTHER ledgers'
+          # snapshot down with it.
+          for f in data/truth_weather.jsonl data/truth_signal.jsonl data/demand_history.jsonl; do
+            [ -f "$f" ] && git add "$f"
+          done
           if git diff --cached --quiet; then
             echo "no change"
           else
