@@ -72,8 +72,29 @@ function buildServer(): McpServer {
     { chain: z.enum(CHAINS).default("base") },
     async ({ chain }) => {
       if (!demoAllowedFor("launch_radar")) return overBudget();
-      const data = await launchRadar(String(chain).toLowerCase()).catch(() => null);
-      return data == null ? ok({ error: "no_fresh_pools" }) : ok(data);
+      const ch = String(chain).toLowerCase();
+      const data = await launchRadar(ch).catch(() => null);
+      if (data != null) return ok(data);
+
+      // An empty launch window is NOT an error, and returning `{"error": ...}` for one
+      // is actively costly: a calling agent cannot distinguish "this service is broken"
+      // from "nothing launched on this chain in the last hour", so the rational move is
+      // to stop calling us. Measured 2026-07-29, eth/solana/bsc were all empty while
+      // base had fresh pools — an agent that happened to try eth first would have
+      // concluded the flagship endpoint was dead.
+      //
+      // So say what happened, that it is expected, and where to look instead.
+      const alt = ch === "base" ? "eth" : "base";
+      const altHas = await launchRadar(alt).then((d) => d != null).catch(() => false);
+      return ok({
+        result: "empty",
+        chain: ch,
+        detail: `No pools launched on ${ch} inside the freshness window. This is a normal empty result, not a failure — launch activity is bursty and most chains are quiet most of the time.`,
+        retry: "Safe to retry in a few minutes; the window moves continuously.",
+        ...(altHas
+          ? { suggestion: `${alt} has fresh launches right now — retry with chain=${alt}.` }
+          : { suggestion: `${alt} is also quiet at the moment, so this is a market-wide lull rather than a chain-specific gap.` }),
+      });
     },
   );
 
