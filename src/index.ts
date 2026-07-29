@@ -486,7 +486,11 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
 const _wDemoUsed = new Map<string, number>();
 let _wDemoDay = "";
 let _wDemoCount = 0;
-app.get("/demo/weather", freeRateLimit, async (req, res) => {
+// Two paths, one handler. Our own /wanted demand tracker caught a caller asking for
+// "/demo/weather/consensus" and 404ing: the natural guess is "/demo/" + the paid path,
+// and the paid path is /weather/consensus. Anyone who reads the catalog and reaches for
+// the demo makes that guess, so serve it rather than making them get it right.
+app.get(["/demo/weather", "/demo/weather/consensus"], freeRateLimit, async (req, res) => {
   const q = req.query as Record<string, any>;
   const err = validateWeather(q);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
