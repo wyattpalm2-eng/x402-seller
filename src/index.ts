@@ -259,6 +259,19 @@ function sweepHits(now: number) {
   for (const [k, v] of _hits) if (now > v.reset) _hits.delete(k); // drop expired: bound memory
 }
 function freeRateLimit(req: Request, res: Response, next: () => void) {
+  // Paid routes must never hit this. `app.use(freeRateLimit, bazaarRouter)` mounts
+  // at "/" with no path, so this middleware leaked onto EVERY later route —
+  // including the paid ones, which sit behind the paywall further down the chain.
+  // Two live consequences, both costing money:
+  //   1. x402scan's indexer probes all 22 endpoints in one burst. It blew through
+  //      60/min and 8 endpoints answered 429 instead of a 402 challenge, so they
+  //      were rejected from the directory: "did not return a 402 payment challenge".
+  //   2. A real buyer-agent that trips the limit gets a 429 with no `accepts`
+  //      block, so it cannot even discover HOW to pay. A rate limiter in front of
+  //      a paywall turns a customer away before quoting them a price.
+  // Payment is the gate on paid routes; this limiter is only for the free storefront.
+  if (PAID_PATHS.has(req.path)) return next();
+
   const ip = req.ip || req.socket.remoteAddress || "unknown";
   const now = Date.now();
   sweepHits(now);
