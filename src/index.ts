@@ -308,7 +308,22 @@ app.get("/health", freeRateLimit, async (_req, res) => {
   });
 });
 app.get("/catalog", freeRateLimit, (_req, res) =>
-  res.json({ payTo: PAY_TO, network: NETWORK, facilitator: FACILITATOR_LABEL, endpoints: CATALOG }),
+  res.json({
+    payTo: PAY_TO,
+    network: NETWORK,
+    facilitator: FACILITATOR_LABEL,
+    // Free demos were advertised only on the human HTML page, so a machine reading
+    // this catalog saw nothing but paid routes and had to spend to evaluate us.
+    // Surfaced here (and in /llms.txt) so an agent can try before it buys.
+    free_demos: {
+      note: "No payment, no key, no signup. Runs the exact paid code path and returns the full paid output; a shared daily budget is the only limit.",
+      endpoints: [
+        { path: "/demo/vet", example: "/demo/vet?chain=base&address=0x4d732d1df4a73831024227afb56b01ebea76d465", paid_equivalent: "/vet" },
+        { path: "/demo/weather", example: "/demo/weather?lat=40.71&lon=-74.01", paid_equivalent: "/weather/consensus" },
+      ],
+    },
+    endpoints: CATALOG,
+  }),
 );
 app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
 // THE WANT LIST: routes real external clients asked for and we do not have. Observed demand.

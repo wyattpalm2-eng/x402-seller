@@ -567,6 +567,19 @@ discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {
     "",
     `> ${DESCRIPTION}`,
     "",
+    // The free demos existed but were advertised ONLY on the human HTML landing page —
+    // llms.txt, /catalog and the x402 manifest mentioned them zero times. An agent that
+    // discovered us therefore had to spend money to find out whether we were any good,
+    // which is exactly the friction the demo was built to remove. It goes first, above
+    // the trust pitch, because "try it for nothing" converts a skeptic faster than
+    // any claim about accuracy does.
+    "## Try it free first (no payment, no key, no signup)",
+    `- GET ${base}/demo/vet?chain=base&address=0x4d732d1df4a73831024227afb56b01ebea76d465`,
+    `- GET ${base}/demo/weather?lat=40.71&lon=-74.01`,
+    "Both run the EXACT paid code path and return the full paid output — a shared daily",
+    "free budget is the only difference, not watered-down data. Wire your agent up against",
+    "these, confirm the answer is worth a cent, then point it at the paid paths below.",
+    "",
     "## The Truth Engine (why you can trust the numbers)",
     "Every endpoint here grades itself against reality in public, forever — hits AND misses:",
     `- rug scorer:   ${base}/track-record (human: ${base}/accuracy) — verdicts on fresh launches graded 6h later`,
