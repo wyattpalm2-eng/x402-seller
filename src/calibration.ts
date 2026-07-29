@@ -281,6 +281,36 @@ export function signalLift(rows: Row[]) {
       samples: known.length,
       verdict: Math.abs(a - b) < 5 ? "no measurable effect" : "predictive",
     });
+
+    // A median split can only see a monotonic effect. Ours is not monotonic:
+    // liquidity's danger is concentrated in a MIDDLE band, which straddles the
+    // median and therefore cancels itself across both halves — the split above
+    // reports "no measurable effect" while the strongest separation in the whole
+    // ledger sits inside it. So band it into terciles as well, and say so loudly
+    // when the middle is the outlier.
+    const t1 = sorted[Math.floor(sorted.length / 3)];
+    const t2 = sorted[Math.floor((2 * sorted.length) / 3)];
+    const lowB = known.filter((r) => (pick(r.feat) as number) <= t1);
+    const midB = known.filter((r) => (pick(r.feat) as number) > t1 && (pick(r.feat) as number) <= t2);
+    const highB = known.filter((r) => (pick(r.feat) as number) > t2);
+    if (lowB.length >= MIN_BAND && midB.length >= MIN_BAND && highB.length >= MIN_BAND) {
+      const lo = rugRate(lowB)!, mi = rugRate(midB)!, hi = rugRate(highB)!;
+      const midIsOutlier = (mi > lo + 5 && mi > hi + 5) || (mi < lo - 5 && mi < hi - 5);
+      out.push({
+        signal: `${name}__banded`,
+        band_cuts: [t1, t2],
+        rug_rate_low_pct: lo,
+        rug_rate_mid_pct: mi,
+        rug_rate_high_pct: hi,
+        samples: [lowB.length, midB.length, highB.length],
+        spread_points: Number((Math.max(lo, mi, hi) - Math.min(lo, mi, hi)).toFixed(1)),
+        verdict: midIsOutlier
+          ? "NON-MONOTONIC — the middle band is the outlier, so the median split above is blind to this and understates the signal. Read this row, not that one."
+          : Math.max(lo, mi, hi) - Math.min(lo, mi, hi) < 5
+            ? "no measurable effect across bands"
+            : "predictive, monotonic",
+      });
+    }
   }
 
   const withFeat = graded.length;
