@@ -196,8 +196,17 @@ export const historyRouter: Router = Router();
 historyRouter.get("/onchain/liquidity", (req: Request, res: Response) => {
   const chain = String(req.query.chain ?? "base").toLowerCase().trim();
   const address = String(req.query.address ?? "");
-  return serve(res, "GET /onchain/liquidity", priceToUsd(PRICE_LIQUIDITY), address.slice(0, 12), async () =>
-    liquidityTrend(chain, address),
+  return serve(
+    res,
+    "GET /onchain/liquidity",
+    priceToUsd(PRICE_LIQUIDITY),
+    address.slice(0, 12),
+    async () => liquidityTrend(chain, address),
+    // This endpoint is a time-series, so the FIRST call for any token necessarily
+    // has nothing to report — liquidityTrend() starts tracking and returns null.
+    // Without saying so, a first-time buyer's first request looks like a broken
+    // product at exactly the moment it is deciding whether we are worth using.
+    "No reserve history for this token yet. This endpoint reports a liquidity trend, which needs at least two observations — we have now STARTED tracking this token, so call again in a few minutes and you will get a verdict. This is the one thing here that cannot be answered on demand: the series is made of elapsed time.",
   );
 });
 

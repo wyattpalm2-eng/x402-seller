@@ -191,10 +191,26 @@ export async function serve(
   priceUsd: number,
   label: string | undefined,
   fn: () => Promise<any>,
+  /** Endpoint-specific explanation for the empty case — say WHY, and what to do. */
+  notFoundDetail?: string,
 ) {
   try {
     const data = await fn();
-    if (data == null) return res.status(404).json({ error: "not_found", detail: "no data for that request" });
+    if (data == null) {
+      // A buyer-agent that pays and gets a bare "no data for that request" has no
+      // way to know whether it was charged, whether we are broken, or whether a
+      // retry helps — so the rational move is to stop calling us. It is also the
+      // moment we most want to reassure it: @x402/express cancels settlement on
+      // any 4xx (verified in its dispatcher, `res.statusCode >= 400` ->
+      // cancel({reason:"handler_failed"})), so an empty answer genuinely costs
+      // nothing. Saying so converts a dead end into a reason to trust us.
+      return res.status(404).json({
+        error: "not_found",
+        detail: notFoundDetail ?? "No data available for that request.",
+        billed: false,
+        billing_note: "You were NOT charged. Settlement is cancelled automatically on any non-200, so an empty result is always free.",
+      });
+    }
     recordSale(route, priceUsd, label);
     res.json({ ...data, source: "x402-seller" }); // don't reveal the upstream supply chain
   } catch (err: any) {
