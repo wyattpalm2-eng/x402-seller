@@ -194,6 +194,39 @@ export function calibration(rows: Row[]) {
   };
 }
 
+/**
+ * CURRENT-ERA verdict counts, for the storefront headline.
+ *
+ * The front page was computing "tokens we called ok rugged X%" from the POOLED
+ * ledger, which is the exact mistake the ERAS block above exists to prevent: on
+ * 2026-07-29 that read 80.2% across 1,474 calls, but 940 of those calls were
+ * scored by the model retired on 2026-07-25. We were publicly quoting a damning
+ * number about a scorer that no longer runs — understating ourselves using a
+ * method our own code documents as invalid.
+ *
+ * Returns null when the current era has too few graded calls in either bucket to
+ * state a rate honestly, so the caller can say "still grading" rather than
+ * publish a percentage built on a handful of rows.
+ */
+export function currentEraVerdictStats(rows: Row[]) {
+  const current = ERAS[0]?.label;
+  const graded = rows.filter((r) => r.graded && r.outcome && (!current || eraOf(r.t) === current));
+  const flagged = graded.filter((r) => r.verdict === "danger" || r.verdict === "warning");
+  const ok = graded.filter((r) => r.verdict === "ok");
+  const rugged = (rs: Row[]) => rs.filter((r) => r.outcome === "rugged").length;
+  return {
+    era: current ?? "unknown",
+    graded: graded.length,
+    flagged_total: flagged.length,
+    flagged_rugged: rugged(flagged),
+    ok_total: ok.length,
+    ok_rugged: rugged(ok),
+    /** False when either bucket is too thin to quote — do not print a rate. */
+    reportable: flagged.length >= MIN_BAND && ok.length >= MIN_BAND,
+    min_band: MIN_BAND,
+  };
+}
+
 function honestReading(table: any[], base: number | null): string {
   if (base === null) return "Not enough graded calls yet to say anything.";
   const usable = table.filter((b) => b.observed_rug_rate_pct !== null);

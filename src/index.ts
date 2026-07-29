@@ -46,7 +46,7 @@ import { discoveryRouter, ENDPOINTS } from "./discovery.js";
 import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
 import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } from "./funnel.js";
 import { getUpstreamHealth, summarize } from "./upstream.js";
-import { calibration, signalLift, relaunchStats } from "./calibration.js";
+import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "./calibration.js";
 import { bazaarRouter } from "./bazaar.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -836,15 +836,23 @@ function landingPage(): string {
   // these from rugs_we_flagged + false_alarms: those use different predicates (warning+danger vs
   // danger-only) and the mismatch silently drops every warning that came out fine, which flatters
   // the ratio and hides an inversion. That mistake shipped here once already.
-  const _tf = Number(s.flagged_total ?? 0);
-  const _okT = Number(s.ok_total ?? 0);
-  const _pFlag = _tf > 0 ? (100 * Number(s.flagged_rugged ?? 0)) / _tf : 0;
-  const _pClear = _okT > 0 ? (100 * Number(s.ok_rugged ?? 0)) / _okT : 0;
-  const _inverted = _tf > 0 && _okT > 0 && _pClear > _pFlag;
+  // Read the CURRENT scoring era only. Pooling eras here published a number about a
+  // scorer we retired on 2026-07-25: on 2026-07-29 the pooled figure said our "ok"
+  // verdict rugged 80.2% over 1,474 calls, but 940 of those calls belonged to the
+  // replaced model. That is the precise error ERAS in calibration.ts exists to stop,
+  // and it was costing us on the storefront — self-flagellating with a stale stat.
+  const _era = currentEraVerdictStats(rawRows());
+  const _tf = _era.flagged_total;
+  const _okT = _era.ok_total;
+  const _pFlag = _tf > 0 ? (100 * _era.flagged_rugged) / _tf : 0;
+  const _pClear = _okT > 0 ? (100 * _era.ok_rugged) / _okT : 0;
+  // Only call it inverted when BOTH buckets are thick enough to mean anything —
+  // an "ok" bucket of three rows can invert on noise alone.
+  const _inverted = _era.reportable && _pClear > _pFlag;
   const proof =
     s.graded > 0
       ? `<p><b>Live track record</b> (self-graded, misses included — <a href="/track-record">full data</a>):
-         ${s.graded} calls graded · flagged tokens rugged ${_pFlag.toFixed(1)}% · tokens we called ok rugged ${_pClear.toFixed(1)}%.</p>
+         ${_era.graded} calls graded on the scorer running right now${_era.reportable ? ` · flagged tokens rugged ${_pFlag.toFixed(1)}% · tokens we called ok rugged ${_pClear.toFixed(1)}%` : ` · ${_era.ok_total} graded "ok" calls so far, too few to quote a rate honestly`}. <span style="color:#888">(${s.graded} graded across all scorer versions; we report the current one, because pooling would average over our own fixes.)</span></p>
          ${_inverted
            ? `<p style="border:1px solid #a33;background:#2a1414;border-radius:8px;padding:10px 12px">
               <b style="color:#ff8a8a">⚠ Our score is currently INVERTED — do not trade on the "ok" verdict.</b>
