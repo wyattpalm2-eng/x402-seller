@@ -296,6 +296,30 @@ export function signalLift(rows: Row[]) {
     if (lowB.length >= MIN_BAND && midB.length >= MIN_BAND && highB.length >= MIN_BAND) {
       const lo = rugRate(lowB)!, mi = rugRate(midB)!, hi = rugRate(highB)!;
       const midIsOutlier = (mi > lo + 5 && mi > hi + 5) || (mi < lo - 5 && mi < hi - 5);
+      // RECENCY. A band spread computed over the whole ledger is a claim about the
+      // past, and this signal is regime-dependent: measured 2026-07-29, the mid-band
+      // effect ran 30-88 points every day from 07-20 to 07-27 and then collapsed to
+      // ~9 points on 07-28, when the base rug rate spiked to 66-78%. When almost
+      // everything rugs, nothing separates. Quoting the lifetime spread during a
+      // collapse would sell a buyer an edge that stopped existing, so compute the
+      // same bands over the most recent third and report both.
+      const byTime = [...known].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+      const recent = byTime.slice(-Math.max(MIN_BAND * 3, Math.floor(byTime.length / 3)));
+      let recentSpread: number | null = null;
+      if (recent.length >= MIN_BAND * 3) {
+        const rs = recent.map((r) => pick(r.feat) as number).sort((x, y) => x - y);
+        const r1 = rs[Math.floor(rs.length / 3)], r2 = rs[Math.floor((2 * rs.length) / 3)];
+        const rl = recent.filter((r) => (pick(r.feat) as number) <= r1);
+        const rm = recent.filter((r) => (pick(r.feat) as number) > r1 && (pick(r.feat) as number) <= r2);
+        const rh = recent.filter((r) => (pick(r.feat) as number) > r2);
+        if (rl.length && rm.length && rh.length) {
+          const v = [rugRate(rl)!, rugRate(rm)!, rugRate(rh)!];
+          recentSpread = Number((Math.max(...v) - Math.min(...v)).toFixed(1));
+        }
+      }
+      const lifetimeSpread = Number((Math.max(lo, mi, hi) - Math.min(lo, mi, hi)).toFixed(1));
+      const collapsed = recentSpread !== null && lifetimeSpread >= 15 && recentSpread < 15;
+
       out.push({
         signal: `${name}__banded`,
         band_cuts: [t1, t2],
@@ -303,10 +327,21 @@ export function signalLift(rows: Row[]) {
         rug_rate_mid_pct: mi,
         rug_rate_high_pct: hi,
         samples: [lowB.length, midB.length, highB.length],
-        spread_points: Number((Math.max(lo, mi, hi) - Math.min(lo, mi, hi)).toFixed(1)),
+        spread_points: lifetimeSpread,
+        recent_spread_points: recentSpread,
+        recent_sample: recent.length,
+        signal_status: collapsed
+          ? "COLLAPSED — this separation held historically but is NOT discriminating in the most recent third of the ledger. Do not trade the lifetime number; it is a claim about the past."
+          : recentSpread === null
+            ? "not enough recent samples to say whether it still holds"
+            : recentSpread >= 15 && lifetimeSpread < 15
+              ? "EMERGING — weak across the full ledger but strongly separating in the most recent third. The lifetime number understates what is happening now."
+              : recentSpread >= 15
+                ? "still holding in recent data"
+                : "weak in both the full ledger and recent data",
         verdict: midIsOutlier
           ? "NON-MONOTONIC — the middle band is the outlier, so the median split above is blind to this and understates the signal. Read this row, not that one."
-          : Math.max(lo, mi, hi) - Math.min(lo, mi, hi) < 5
+          : lifetimeSpread < 5
             ? "no measurable effect across bands"
             : "predictive, monotonic",
       });
