@@ -43,15 +43,51 @@ function _refresh<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return p;
 }
 
+/**
+ * LAST-GOOD FALLBACK. Past SERVE_STALE_MS this used to hard-fail when the refresh failed, throwing
+ * away a perfectly usable reading from twenty minutes ago. On Render that matters: the free tier
+ * shares outbound IPs, DexScreener rate-limits by IP, and 429 spells are frequent. Losing liquidity
+ * entirely costs the survival model its most load-bearing feature; a slightly old reading costs it
+ * almost nothing, because what the model keys on is the liquidity BAND, which does not move in
+ * minutes.
+ *
+ * The honesty condition: a stale reading is exactly what would MISS a rug in progress, since the
+ * whole signature of a rug is liquidity going to zero. So anything past STALE_OK_MS is served but
+ * flagged, and the caller is expected to surface the age rather than pass it off as a fresh read.
+ */
+const LAST_GOOD_MAX_MS = 6 * 60 * 60 * 1000; // the model's own horizon; older than this is useless
+const STALE_OK_MS = 15 * 60 * 1000;          // within normal polling noise — not worth flagging
+const _servedStale = new Map<string, number>();
+
 export async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const hit = _cache.get(key);
   const age = hit ? Date.now() - hit.at : Infinity;
-  if (hit && age < FRESH_MS) return hit.val;            // fresh
+  if (hit && age < FRESH_MS) { _servedStale.delete(key); return hit.val; }  // fresh
   if (hit && age < SERVE_STALE_MS) {                    // stale: serve now, refresh behind
     void _refresh(key, fn).catch(() => {});             // background; keep last-good on failure
+    _servedStale.delete(key);
     return hit.val;
   }
-  return _refresh(key, fn);                             // cold/expired: must await
+  try {
+    const val = await _refresh(key, fn);                // cold/expired: must await
+    _servedStale.delete(key);
+    return val;
+  } catch (err) {
+    const last = _cache.get(key);                       // _refresh only writes on success, so this survives
+    const lastAge = last ? Date.now() - last.at : Infinity;
+    if (last && lastAge < LAST_GOOD_MAX_MS) {
+      if (lastAge > STALE_OK_MS) _servedStale.set(key, lastAge);
+      if (_servedStale.size > MAX_CACHE_ENTRIES) _servedStale.clear();
+      return last.val;
+    }
+    throw err;
+  }
+}
+
+/** Age in ms of the last-good value served for `key` when the upstream was unreachable, or null if
+ *  the last answer was genuinely fresh. Callers surface this so a stale read is never sold as new. */
+export function servedStaleAgeMs(key: string): number | null {
+  return _servedStale.get(key) ?? null;
 }
 
 /**

@@ -38,7 +38,7 @@
  * Errors never echo upstream detail.
  */
 import { Router, type Request, type Response } from "express";
-import { cached, getJson } from "./data.js";
+import { cached, getJson, servedStaleAgeMs } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
@@ -173,14 +173,19 @@ async function isReputableToken(chainId: string, addr: string): Promise<boolean>
 const DEXSCREENER_CHAINS: Record<string, string> = {
   "8453": "base", "1": "ethereum", "56": "bsc", "137": "polygon", "42161": "arbitrum", "10": "optimism",
 };
-async function dexMarket(chainId: string, addr: string): Promise<{ listed: boolean; ageDays: number | null; liquidityUsd: number | null; volume24h: number | null }> {
+async function dexMarket(chainId: string, addr: string): Promise<{ listed: boolean; ageDays: number | null; liquidityUsd: number | null; volume24h: number | null; staleMinutes: number | null }> {
   const slug = DEXSCREENER_CHAINS[chainId];
-  if (!slug) return { listed: false, ageDays: null, liquidityUsd: null, volume24h: null };
-  const j = await cached(`ds:${chainId}:${addr}`, () =>
+  if (!slug) return { listed: false, ageDays: null, liquidityUsd: null, volume24h: null, staleMinutes: null };
+  const cacheKey = `ds:${chainId}:${addr}`;
+  const j = await cached(cacheKey, () =>
     getJson(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(addr)}`),
   ).catch(() => null);
+  // Non-null only when the upstream was unreachable and we fell back to an older reading. A stale
+  // liquidity number is precisely what would miss a rug in progress, so it travels with the answer.
+  const staleMs = servedStaleAgeMs(cacheKey);
+  const staleMinutes = staleMs === null ? null : Math.round(staleMs / 60000);
   const pairs = Array.isArray(j?.pairs) ? j.pairs.filter((p: any) => p?.chainId === slug) : [];
-  if (!pairs.length) return { listed: false, ageDays: null, liquidityUsd: null, volume24h: null };
+  if (!pairs.length) return { listed: false, ageDays: null, liquidityUsd: null, volume24h: null, staleMinutes };
   let oldestMs = Infinity, maxLiq = 0, vol = 0;
   for (const p of pairs) {
     const created = Number(p.pairCreatedAt); // DexScreener returns epoch MILLISECONDS
@@ -189,7 +194,7 @@ async function dexMarket(chainId: string, addr: string): Promise<{ listed: boole
     if (Number.isFinite(liq) && liq > maxLiq) { maxLiq = liq; vol = Number(p.volume?.h24) || 0; }
   }
   const ageDays = Number.isFinite(oldestMs) ? (Date.now() - oldestMs) / 86400000 : null;
-  return { listed: true, ageDays, liquidityUsd: maxLiq || null, volume24h: vol || null };
+  return { listed: true, ageDays, liquidityUsd: maxLiq || null, volume24h: vol || null, staleMinutes };
 }
 
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
@@ -583,6 +588,7 @@ export async function safetyReport(chainKey: string, address: string) {
     holders: Number(t?.holder_count) || null,
     lp_locked: lpLocked,
     address: addr,
+    liq_stale_minutes: dex?.staleMinutes ?? null,
   });
 
   // The verdict is now the model's, EXCEPT where a hard gate fires. A honeypot that the sim caught

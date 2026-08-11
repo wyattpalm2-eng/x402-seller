@@ -165,6 +165,9 @@ export type SurvivalInput = {{
   holders: number | null;
   lp_locked: boolean | null;
   address: string;
+  /** Age of the liquidity reading when it came from a last-good fallback rather than a live fetch.
+   *  Null on a fresh read. A stale liquidity number is exactly what would miss a rug in progress. */
+  liq_stale_minutes?: number | null;
 }};
 
 export type SurvivalRead = {{
@@ -267,7 +270,12 @@ export function survival(input: SurvivalInput): SurvivalRead {{
   // must never manufacture confidence. When a load-bearing input is missing we say so and pull the
   // verdict back to the middle, where not-knowing belongs.
   const liqMissing = input.liq_usd == null || !Number.isFinite(Number(input.liq_usd));
-  const inputsMissing = liqMissing ? ["liq_usd (liquidity upstream unavailable)"] : [];
+  const liqStale = !liqMissing && (input.liq_stale_minutes ?? 0) > 0;
+  const inputsMissing = liqMissing
+    ? ["liq_usd (liquidity upstream unavailable)"]
+    : liqStale
+    ? [`liq_usd is ${{input.liq_stale_minutes}}min old (served from last-good, upstream unreachable)`]
+    : [];
 
   const f = featureMap(input);
   let z = INTERCEPT;
@@ -293,6 +301,9 @@ export function survival(input: SurvivalInput): SurvivalRead {{
   const note = liqMissing
     ? `liquidity could not be read from any upstream, so this is a DEGRADED estimate held back from ` +
       `either confident end — treat it as "unknown", not as a ${{HORIZON_HOURS}}h clearance, and retry`
+    : liqStale
+    ? `scored on a liquidity reading ${{input.liq_stale_minutes}} minutes old because the upstream was ` +
+      `unreachable — a rug that started since then would not be visible here, so re-check before entering`
     : cohort === "doomed"
     ? `pool is expected to be effectively gone within ${{HORIZON_HOURS}}h — do not size a position you need to exit`
     : cohort === "fragile"
@@ -316,7 +327,7 @@ export function survival(input: SurvivalInput): SurvivalRead {{
     p_survive: Math.round((1 - pRug) * 10000) / 10000,
     cohort,
     cohort_note: note,
-    confidence: liqMissing ? "degraded" : "measured",
+    confidence: liqMissing || liqStale ? "degraded" : "measured",
     inputs_missing: inputsMissing,
     // The published hit rate describes tokens whose liquidity we actually measured, so quoting it
     // against a degraded read would lend it borrowed authority.

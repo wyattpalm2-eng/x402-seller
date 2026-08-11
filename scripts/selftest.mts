@@ -80,6 +80,16 @@ const doomedish = survival({
 ok("degraded launchpad read is held back from doomed", doomedish.cohort !== "doomed" && doomedish.confidence === "degraded");
 ok("NaN liquidity is treated as missing too", survival({ ...thin, liq_usd: NaN }).confidence === "degraded");
 
+// Stale-but-present liquidity: usable, but it is exactly the reading that would miss a rug that
+// began after it was taken, so it must not be sold as a fresh measurement.
+const stale = survival({ ...thin, liq_usd: 60000, liq_stale_minutes: 42 });
+ok("a stale liquidity read is flagged degraded", stale.confidence === "degraded");
+ok("the staleness age is stated", stale.inputs_missing.some((s) => s.includes("42min")));
+ok("the note warns a rug since then is invisible", /re-check/i.test(stale.cohort_note));
+ok("stale still keeps the probability usable", stale.p_rug === measured.p_rug);
+ok("a fresh read with stale=0 stays measured", survival({ ...thin, liq_usd: 60000, liq_stale_minutes: 0 }).confidence === "measured");
+ok("a fresh read with stale=null stays measured", survival({ ...thin, liq_usd: 60000, liq_stale_minutes: null }).confidence === "measured");
+
 console.log("\ncalibration table");
 ok("monotone at the extremes", CALIBRATION[0].observedRug < CALIBRATION[CALIBRATION.length - 1].observedRug);
 ok("lowest band is genuinely low-risk", CALIBRATION[0].observedRug < 0.10);
