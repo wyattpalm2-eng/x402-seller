@@ -1,7 +1,15 @@
-"""Emit src/survival.ts from the exported model so no coefficient is hand-typed."""
-import json
+"""Emit src/survival.ts from the exported model so no coefficient is hand-typed.
 
-m = json.load(open('survival_model.json'))
+Invoked by scripts/retrain.py; run it directly only if you have hand-edited the model JSON.
+Paths resolve off this file's location, not the working directory.
+"""
+import json, os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL = os.path.join(ROOT, "data", "survival_model.json")
+TARGET = os.path.join(ROOT, "src", "survival.ts")
+
+m = json.load(open(MODEL))
 keys, mu, sd, coef = m['keys'], m['mu'], m['sd'], m['coef']
 assert len(keys) == len(mu) == len(sd) == len(coef)
 
@@ -319,5 +327,5 @@ export function survival(input: SurvivalInput): SurvivalRead {{
 }}
 '''
 
-open('/Users/wyattpalm/Claude Code/x402-seller/src/survival.ts', 'w').write(ts)
-print("wrote src/survival.ts", len(ts), "bytes")
+open(TARGET, 'w').write(ts)
+print(f"wrote {TARGET} ({len(ts)} bytes)")
