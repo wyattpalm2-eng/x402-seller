@@ -132,6 +132,10 @@ export type SurvivalRead = {
   p_survive: number;
   cohort: "doomed" | "fragile" | "uncertain" | "resilient";
   cohort_note: string;
+  /** "measured" when every load-bearing input resolved; "degraded" when one did not and the read
+   *  has been deliberately pulled back toward the middle. Check this before acting on p_rug. */
+  confidence: "measured" | "degraded";
+  inputs_missing: string[];
   observed_at_this_confidence: { n: number; rugged_pct: number; survived_pct: number } | null;
   drivers: string[];
   model: typeof MODEL_META;
@@ -212,6 +216,18 @@ function calibrationFor(p: number) {
 }
 
 export function survival(input: SurvivalInput): SurvivalRead {
+  // ── DEGRADED-INPUT GUARD ──
+  // Liquidity is the single most load-bearing input, and the recorder only ever wrote rows where it
+  // resolved, so a null liquidity is OUT OF DISTRIBUTION — the model was never fit on it. Left
+  // unguarded it coerces to 0, which lights up `band_micro` (a large negative coefficient, because
+  // a genuinely sub-$5k pool is too thin to be worth pulling) and the answer comes back MORE
+  // confident than a measured one: a DexScreener 429 turned a token into p_rug 0.0005, the most
+  // reassuring reading the model can produce, purely because we failed to fetch. An upstream outage
+  // must never manufacture confidence. When a load-bearing input is missing we say so and pull the
+  // verdict back to the middle, where not-knowing belongs.
+  const liqMissing = input.liq_usd == null || !Number.isFinite(Number(input.liq_usd));
+  const inputsMissing = liqMissing ? ["liq_usd (liquidity upstream unavailable)"] : [];
+
   const f = featureMap(input);
   let z = INTERCEPT;
   const contrib: Array<{ key: string; v: number }> = [];
@@ -223,16 +239,26 @@ export function survival(input: SurvivalInput): SurvivalRead {
     contrib.push({ key: KEYS[k], v: c });
   }
   const pRug = 1 / (1 + Math.exp(-z));
-  const cohort: SurvivalRead["cohort"] =
+  const raw: SurvivalRead["cohort"] =
     pRug >= 0.9 ? "doomed" : pRug >= 0.5 ? "fragile" : pRug >= 0.25 ? "uncertain" : "resilient";
-  const note =
-    cohort === "doomed"
-      ? `pool is expected to be effectively gone within ${HORIZON_HOURS}h — do not size a position you need to exit`
-      : cohort === "fragile"
-      ? "more likely than not to lose its pool inside the window"
-      : cohort === "uncertain"
-      ? "genuinely uncertain — the features do not separate this one"
-      : `expected to still be tradeable in ${HORIZON_HOURS}h`;
+  // A degraded read is never allowed to reach either confident end. "resilient" is the dangerous
+  // direction (we would be calling a token tradeable on data we could not fetch) and "doomed" would
+  // be overclaiming; both collapse to the honest middle.
+  const cohort: SurvivalRead["cohort"] = !liqMissing
+    ? raw
+    : raw === "resilient" || raw === "uncertain"
+    ? "uncertain"
+    : "fragile";
+  const note = liqMissing
+    ? `liquidity could not be read from any upstream, so this is a DEGRADED estimate held back from ` +
+      `either confident end — treat it as "unknown", not as a ${HORIZON_HOURS}h clearance, and retry`
+    : cohort === "doomed"
+    ? `pool is expected to be effectively gone within ${HORIZON_HOURS}h — do not size a position you need to exit`
+    : cohort === "fragile"
+    ? "more likely than not to lose its pool inside the window"
+    : cohort === "uncertain"
+    ? "genuinely uncertain — the features do not separate this one"
+    : `expected to still be tradeable in ${HORIZON_HOURS}h`;
 
   contrib.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
   const drivers: string[] = [];
@@ -249,7 +275,11 @@ export function survival(input: SurvivalInput): SurvivalRead {
     p_survive: Math.round((1 - pRug) * 10000) / 10000,
     cohort,
     cohort_note: note,
-    observed_at_this_confidence: calibrationFor(pRug),
+    confidence: liqMissing ? "degraded" : "measured",
+    inputs_missing: inputsMissing,
+    // The published hit rate describes tokens whose liquidity we actually measured, so quoting it
+    // against a degraded read would lend it borrowed authority.
+    observed_at_this_confidence: liqMissing ? null : calibrationFor(pRug),
     drivers,
     model: MODEL_META,
   };

@@ -83,3 +83,4 @@
 {"id": "brief:BTC:2026-08-10T00", "t": 1786328879116, "kind": "brief", "symbol": "BTC", "slot": "2026-08-10T00", "verdict": "neutral", "price0": 64881.265, "graded": false}
 {"id": "brief:BTC:2026-08-10T12", "t": 1786363962824, "kind": "brief", "symbol": "BTC", "slot": "2026-08-10T12", "verdict": "neutral", "price0": 65088.665, "graded": false}
 {"id": "brief:BTC:2026-08-11T00", "t": 1786411601619, "kind": "brief", "symbol": "BTC", "slot": "2026-08-11T00", "verdict": "neutral", "price0": 63977.935, "graded": false}
+{"id":"brief:BTC:2026-08-10T00","t":1786328879116,"kind":"brief","symbol":"BTC","slot":"2026-08-10T00","verdict":"neutral","price0":64881.265,"graded":true,"price24":64051.565,"change_pct":-1.28,"hit":false,"graded_after_h":25.4,"graded_at":"2026-08-11T03:54:05.052Z"}

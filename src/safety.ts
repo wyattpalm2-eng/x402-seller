@@ -587,8 +587,11 @@ export async function safetyReport(chainKey: string, address: string) {
 
   // The verdict is now the model's, EXCEPT where a hard gate fires. A honeypot that the sim caught
   // is a fact, not a probability, and must not be talked down by a favourable base rate.
+  // Derived from the COHORT, not from surv.p_rug directly. The cohort already applies the
+  // degraded-input guard, so a token whose liquidity we could not fetch can never come back "ok"
+  // here — reading the raw probability would route straight around that.
   if (!hardTrap && !scam) {
-    verdict = surv.p_rug >= 0.9 ? "danger" : surv.p_rug >= 0.25 ? "warning" : "ok";
+    verdict = surv.cohort === "doomed" ? "danger" : surv.cohort === "resilient" ? "ok" : "warning";
     risk = Math.round(surv.p_rug * 100);
   }
 

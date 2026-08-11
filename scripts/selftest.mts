@@ -51,6 +51,35 @@ ok("horizon is stated", launchpad.horizon_hours === 6);
 ok("drivers explain the call", launchpad.drivers.length > 0);
 ok("calibration attached", launchpad.observed_at_this_confidence !== null);
 
+console.log("\ndegraded inputs — an upstream outage must not manufacture confidence");
+// Real failure caught in production: DexScreener returned 429, liq_usd arrived null, coerced to 0,
+// lit up band_micro and produced p_rug 0.0005 — the single most reassuring answer the model can
+// give — because we failed to fetch rather than because the token was safe.
+const thin = {
+  green_flags: 2, red_flags: 1, sources: 2, renounced: false, verified: false, mintable: false,
+  proxy: false, creator_prior_honeypot: false, hp_honeypot: false, needs_review: false,
+  buy_tax: 0, sell_tax: 0, holders: null, lp_locked: null,
+  address: "0x1111111111111111111111111111111111111111",
+};
+const measured = survival({ ...thin, liq_usd: 60000 });
+const degraded = survival({ ...thin, liq_usd: null });
+console.log(`    measured  p_rug=${measured.p_rug} ${measured.cohort} (${measured.confidence})`);
+console.log(`    degraded  p_rug=${degraded.p_rug} ${degraded.cohort} (${degraded.confidence})`);
+ok("missing liquidity is reported, not swallowed", degraded.confidence === "degraded");
+ok("the missing input is named", degraded.inputs_missing.some((s) => s.includes("liq_usd")));
+ok("a degraded read never says resilient", degraded.cohort !== "resilient");
+ok("a degraded read never says doomed", degraded.cohort !== "doomed");
+ok("a measured read is still labelled measured", measured.confidence === "measured");
+ok("no borrowed authority: no hit rate quoted on a degraded read", degraded.observed_at_this_confidence === null);
+ok("the note tells the caller to retry", /degraded/i.test(degraded.cohort_note));
+// And the same guard on the doomed side: a launchpad token whose liquidity we could not read.
+const doomedish = survival({
+  ...thin, green_flags: 5, renounced: true, verified: true, sources: 4, liq_usd: null,
+  address: "0xca3a4d1360c8120d421ef3cf8fd4fd4c4421d174",
+});
+ok("degraded launchpad read is held back from doomed", doomedish.cohort !== "doomed" && doomedish.confidence === "degraded");
+ok("NaN liquidity is treated as missing too", survival({ ...thin, liq_usd: NaN }).confidence === "degraded");
+
 console.log("\ncalibration table");
 ok("monotone at the extremes", CALIBRATION[0].observedRug < CALIBRATION[CALIBRATION.length - 1].observedRug);
 ok("lowest band is genuinely low-risk", CALIBRATION[0].observedRug < 0.10);
