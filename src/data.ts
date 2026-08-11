@@ -58,15 +58,46 @@ export async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
  * Fetch JSON with a hard timeout. Exported so other modules share one policy.
  * Throws a detailed error for SERVER logs; callers must not echo it to clients.
  */
+/**
+ * Retry only what is worth retrying. 429 and 5xx are the upstream saying "not right now"; a 400 or
+ * 404 is it saying "never", and retrying those just burns the caller's latency budget.
+ *
+ * This exists because of a measured production failure. Render's free tier shares outbound IPs
+ * across tenants and DexScreener rate-limits by IP, so the box was seeing 429s that the same
+ * request from a laptop did not. A single 429 failed the whole call, liquidity came back null, and
+ * the survival model — whose most load-bearing input that is — had to degrade its answer. Two short
+ * retries recover the overwhelming majority of those.
+ *
+ * Deliberately NOT solved with a second data provider: GeckoTerminal is free and keyless, but it
+ * scopes "liquidity" differently (it reported USDC's deepest pool at $112M where DexScreener says
+ * $907k, because DexScreener only counts pairs where the token is the base asset). Substituting it
+ * would feed the model a feature it was never fit on and produce confident wrong answers, which is
+ * strictly worse than an honestly degraded one.
+ */
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+const RETRY_BACKOFF_MS = [400, 1200]; // ~1.6s worst case added — inside an agent's patience
+
 export async function getJson(url: string, extraHeaders?: Record<string, string>): Promise<any> {
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-    headers: { "user-agent": "x402-seller/0.1 (+market-data)", accept: "application/json", ...extraHeaders },
-  });
-  if (!res.ok) throw new Error(`upstream ${res.status} for ${url}`);
-  const len = Number(res.headers.get("content-length"));
-  if (Number.isFinite(len) && len > MAX_RESPONSE_BYTES) throw new Error(`upstream body too large: ${len}`);
-  return res.json();
+  let lastStatus = 0;
+  for (let attempt = 0; attempt <= RETRY_BACKOFF_MS.length; attempt++) {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { "user-agent": "x402-seller/0.1 (+market-data)", accept: "application/json", ...extraHeaders },
+    });
+    if (res.ok) {
+      const len = Number(res.headers.get("content-length"));
+      if (Number.isFinite(len) && len > MAX_RESPONSE_BYTES) throw new Error(`upstream body too large: ${len}`);
+      return res.json();
+    }
+    lastStatus = res.status;
+    if (!RETRY_STATUSES.has(res.status) || attempt === RETRY_BACKOFF_MS.length) break;
+    // Honour Retry-After when the upstream states one, but never stall longer than our own backoff:
+    // a 60-second Retry-After is not something a paying agent will wait through.
+    const stated = Number(res.headers.get("retry-after")) * 1000;
+    const wait = Number.isFinite(stated) && stated > 0 ? Math.min(stated, RETRY_BACKOFF_MS[attempt]) : RETRY_BACKOFF_MS[attempt];
+    await new Promise((r) => setTimeout(r, wait));
+  }
+  throw new Error(`upstream ${lastStatus} for ${url}`);
 }
 
 /** Spot crypto price from Coinbase's public API. symbol like "BTC" or "ETH-USD". */
