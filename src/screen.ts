@@ -19,7 +19,8 @@ import { priceToUsd } from "./stats.js";
 import { safetyReport, SAFETY_CHAINS } from "./safety.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_SCREEN = process.env.PRICE_SCREEN || "$0.01";
+// Batch survival screen — runs the model over many addresses in one call. See composites.ts.
+export const PRICE_SCREEN = process.env.PRICE_SCREEN || "$0.05";
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 const MAX_TOKENS = 8;
 

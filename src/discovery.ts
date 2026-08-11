@@ -17,23 +17,30 @@ const FACILITATOR = process.env.FACILITATOR_URL?.trim() || "https://x402.org/fac
 const IS_MAINNET = NETWORK === "eip155:8453";
 const NAME = "x402-seller";
 const DESCRIPTION =
-  "Rug protection and decision-ready intelligence for autonomous trading agents. Keyless by design: " +
-  "no signup, no API key — pay a cent per request in USDC (x402). The /alpha/launches LAUNCH RADAR " +
-  "discovers what just launched AND rug-screens every candidate in one call, ranked per-token verdicts — the " +
-  "proactive 'give me safe alpha' call. /vet gives a single-token go/no-go " +
-  "in ONE call by fusing a COMPOSITE rug score (GoPlus static analysis + a LIVE Honeypot.is buy/sell " +
-  "simulation + serial-rugger check) with our SELF-COLLECTED liquidity-drain trend — a rug-in-progress " +
-  "signal that exists nowhere for free because it requires collecting reserves over time. One call is " +
-  "cheaper than the inference tokens you'd burn stitching 4 free APIs, and it stops your agent losing its " +
-  "whole position to a honeypot. Also: /onchain/liquidity drain detector, /screen batch watchlist check, " +
-  "/brief market regime, and raw feeds (prices, stocks, DEX pools, launches, perp funding/OI).";
+  "Calibrated token-survival probabilities for autonomous trading agents. Keyless by design: no signup, " +
+  "no API key — pay per call in USDC (x402). /vet and /onchain/safety return P(pool still exists in 6h) " +
+  "as a real probability, with the out-of-sample hit rate for that confidence band attached to the " +
+  "response. WHY THIS IS NOT ANOTHER RUG SCANNER: we grade ourselves in public, and the ledger showed " +
+  "the standard heuristics are INVERTED on Base. Across 1,022 graded tokens, 'ownership renounced' rugged " +
+  "77.5% while NOT-renounced rugged 4.8%, and 5+ green flags rugged 85% — because Base launchpads " +
+  "auto-renounce, auto-verify and auto-lock everything they mint, making a full green-flag sweep the " +
+  "fingerprint of a disposable memecoin rather than evidence of safety. Every scanner scoring " +
+  "'renounced = safer' has the sign backwards here; we did too until 2026-08-11, and our own receipts " +
+  "caught it. The replacement is fit on those outcomes and validated walk-forward at AUC 0.954 across 6 " +
+  "chronological folds (retired scorer: 0.545). Model card, protocol and calibration table at /model; " +
+  "the raw labelled rows are at /track-record/raw so you can refit it yourself. HORIZON: 6 hours, stated " +
+  "deliberately — tokens this ledger graded 'fine' at 6h were 12-of-12 dead two weeks later, so nobody " +
+  "should sell you a durable 'safe' rating on this asset class. Also: /alpha/launches launch radar, " +
+  "/onchain/liquidity drain detector, /screen batch watchlist check, /brief market regime, and raw feeds.";
 const WHY_PAY = [
-  "public self-graded track record at /track-record (free): our scorer graded against real outcomes, misses included — evidence, not claims",
-  "avoid catastrophic loss: /vet + /onchain/safety catch honeypots and draining liquidity BEFORE your agent apes in — one bad ape costs more than 10,000 calls",
+  "the free alternatives have the sign backwards on Base: 'renounced/verified/LP-locked' tokens rugged 77.5% on our ledger vs 4.8% for not-renounced — see /model, and /track-record/raw to check us",
+  "a calibrated probability, not a points total: every answer carries the measured out-of-sample rug rate for its confidence band, so it drops straight into an expected-value calculation",
+  "validated the only way that counts: walk-forward on 1,022 of our own graded outcomes, AUC 0.954 pooled, worst fold 0.88 — against 0.545 for the hand-weighted score we retired",
+  "public self-graded track record at /track-record (free), misses included — we published our own inversion rather than hiding it",
   "data that isn't free anywhere: a LIVE buy/sell simulation and a self-collected liquidity-drain time-series — not a re-wrap of a public snapshot",
   "keyless: an agent cannot fill signup forms or manage API keys — x402 payment IS the auth",
-  "one call per decision: /vet fuses 4+ sources into a verdict, so you spend a cent instead of the inference tokens to reconcile them yourself",
-  "verdict-first JSON: read field 1 (clear/caution/avoid), act; reasons + a needs_review disagreement flag included for audit",
+  "one call per decision: /vet fuses 4+ sources plus the model into one answer, instead of the inference tokens you'd burn reconciling them yourself",
+  "honest about horizon: 6h, stated up front, because tokens we graded 'fine' at 6h were 12-of-12 dead two weeks later",
 ];
 
 const P = {

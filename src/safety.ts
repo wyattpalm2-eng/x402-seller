@@ -44,9 +44,11 @@ import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
 import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
 import { verdictHonesty } from "./calib-cache.js";
+import { survival } from "./survival.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_SAFETY = process.env.PRICE_ONCHAIN_SAFETY || "$0.01";
+// Carries the survival model — see the pricing note in composites.ts.
+export const PRICE_SAFETY = process.env.PRICE_ONCHAIN_SAFETY || "$0.05";
 
 // our slug -> GoPlus numeric chain id (EVM). Solana routes to solsafety.ts
 // (GoPlus Solana API + RugCheck — a different composite for different rug physics).
@@ -558,12 +560,48 @@ export async function safetyReport(chainKey: string, address: string) {
   ].filter(Boolean) as string[];
   const confidence = needsReview ? "low (sources disagree)" : haveBoth ? "high" : "medium (single source)";
 
+  // ── CALIBRATED SURVIVAL MODEL (2026-08-11) — the thing actually worth paying for ──
+  // Everything above this line is the hand-weighted heuristic score. Our own public ledger showed
+  // it running at AUC 0.545 out of sample: a coin flip, and inverted on the signals that matter
+  // (see the header comment in survival.ts). It is kept because the hard gates — honeypot sim-fail,
+  // known-scam lists, cannot-sell — are genuinely load-bearing and are not statistical claims.
+  // What it must no longer do is set the headline verdict on its own.
+  const surv = survival({
+    liq_usd: dexLiq,
+    green_flags: greenFlags.length,
+    red_flags: redFlags.length,
+    sources: sources.length,
+    renounced: greenFlags.includes("ownership renounced"),
+    verified: flag(t?.is_open_source),
+    mintable: flag(t?.is_mintable),
+    proxy: flag(t?.is_proxy),
+    creator_prior_honeypot: flag(t?.honeypot_with_same_creator),
+    hp_honeypot: hp?.is_honeypot ?? null,
+    needs_review: needsReview,
+    buy_tax: hp?.buy_tax ?? gpBuyTax,
+    sell_tax: hp?.sell_tax ?? gpSellTax,
+    holders: Number(t?.holder_count) || null,
+    lp_locked: lpLocked,
+    address: addr,
+  });
+
+  // The verdict is now the model's, EXCEPT where a hard gate fires. A honeypot that the sim caught
+  // is a fact, not a probability, and must not be talked down by a favourable base rate.
+  if (!hardTrap && !scam) {
+    verdict = surv.p_rug >= 0.9 ? "danger" : surv.p_rug >= 0.25 ? "warning" : "ok";
+    risk = Math.round(surv.p_rug * 100);
+  }
+
   return {
     chain: chainKey,
     address: addr,
     token: { name: t?.token_name ?? null, symbol: t?.token_symbol ?? null },
     verdict, // ok | warning | danger — read this first
     risk_score: risk, // 0-100, higher = worse
+    // The calibrated read: a probability with a horizon and a published hit rate behind it, rather
+    // than a points total. `observed_at_this_confidence` is what actually happened to the tokens we
+    // scored in this same band, measured walk-forward.
+    survival: surv,
     confidence,
     needs_review: needsReview, // static and dynamic methods disagree — don't trust a clean read
     red_flags: redFlags,
@@ -624,7 +662,7 @@ safetyRouter.get("/onchain/safety", (req: Request, res: Response) => {
 export const safetyRoutes = {
   "GET /onchain/safety": {
     accepts: [{ scheme: "exact", price: PRICE_SAFETY, network: NETWORK, payTo: getReceiveAddress() }],
-    description: "Composite rug/honeypot score: static (GoPlus) + LIVE buy/sell simulation (Honeypot.is), fused into one verdict",
+    description: "Calibrated P(pool survives 6h) from a model fit on 1,022 of our own graded outcomes (walk-forward AUC 0.954), fused with static analysis (GoPlus) and a LIVE buy/sell simulation (Honeypot.is). Encodes the measured inversion of the standard rug heuristics on Base — see /model.",
     mimeType: "application/json",
   },
 };

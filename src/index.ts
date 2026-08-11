@@ -34,6 +34,8 @@ import { stormRiskRouter, stormRiskRoutes, stormRiskCatalog, validateStormRisk }
 import { walletFingerprintRouter, walletFingerprintRoutes, walletFingerprintCatalog, validateWalletFingerprint } from "./ported/wallet-fingerprint.js";
 import { tokenRiskRouter, tokenRiskRoutes, tokenRiskCatalog, validateTokenRisk } from "./ported/token-risk.js";
 import { accuracyPage } from "./accuracy.js";
+import { MODEL_META, CALIBRATION } from "./survival.js";
+import { startKeepalive, keepaliveStats } from "./keepalive.js";
 import { demandReport, bumpDemo } from "./demand.js";
 import { demandHistory, demandTrend, startDemandHistory } from "./demand-history.js";
 import { startTruth, truthWeatherSummary, truthWeatherRaw } from "./truth.js";
@@ -302,6 +304,8 @@ app.get("/health", freeRateLimit, async (_req, res) => {
     ok: up.ok,
     network: NETWORK,
     payTo: PAY_TO,
+    // Observable proof the box is staying awake rather than relying on a throttled external cron.
+    keepalive: keepaliveStats(),
     upstreams: results,
     ...(up.degraded.length ? { degraded: up.degraded } : {}),
     ...(up.unchecked.length ? { unchecked: up.unchecked } : {}),
@@ -427,6 +431,42 @@ app.use(freeRateLimit, bazaarRouter);
 app.get("/calibration", freeRateLimit, (_req, res) => res.json(calibration(rawRows())));
 app.get("/signals", freeRateLimit, (_req, res) => res.json(signalLift(rawRows())));
 app.get("/relaunches", freeRateLimit, (_req, res) => res.json(relaunchStats(rawRows())));
+
+// ─── THE MODEL CARD (free) ───────────────────────────────────────────────
+// The finding, the validation protocol, and the coefficients' direction — published, because the
+// claim "the standard rug heuristics are inverted on Base" is only worth anything if someone can
+// check it. Every input below is on our public ledger at /track-record/raw.
+app.get("/model", freeRateLimit, (_req, res) =>
+  res.json({
+    model: MODEL_META,
+    the_finding:
+      "On Base, the standard contract-safety heuristics are INVERTED. Across 1,022 graded tokens, " +
+      "'ownership renounced' tokens rugged 77.5% of the time while NOT-renounced rugged 4.8%; tokens " +
+      "carrying 5+ green flags rugged 85% against 25-63% for those with 4 or fewer; and every proxy, " +
+      "mintable, vanity-address and prior-honeypot-creator token in the set survived. The cause is " +
+      "structural: Base launchpads auto-renounce, auto-verify and auto-lock everything they mint, so " +
+      "a full sweep of green flags is the fingerprint of a disposable memecoin, not evidence of safety.",
+    why_it_matters:
+      "Any scanner that scores 'renounced = safer' is selling the inverse of the outcomes on this chain. " +
+      "We shipped that same inversion until 2026-08-11 and our own public ledger is what caught it.",
+    horizon_warning:
+      "This model predicts survival over 6 HOURS and nothing longer. We sampled tokens this ledger " +
+      "graded 'fine' at 6h and re-checked them two weeks later: 12 of 12 were dead, and even among the " +
+      "deepest-liquidity clean calls only 2 of 12 survived. Almost everything launched on Base dies. " +
+      "The answerable question is whether the pool outlasts your position, which is what this scores.",
+    calibration_out_of_sample: CALIBRATION.map((c) => ({
+      predicted_rug_prob: `${c.lo}-${c.hi}`,
+      n: c.n,
+      actually_rugged_pct: Math.round(c.observedRug * 1000) / 10,
+      actually_survived_pct: Math.round((1 - c.observedRug) * 1000) / 10,
+    })),
+    verify_it_yourself: {
+      raw_labelled_data: "/track-record/raw",
+      grading_formula: "/track-record",
+      note: "Every row carries the feature vector we scored on and the outcome we later measured. Refit it and check.",
+    },
+    as_of: new Date().toISOString(),
+  }));
 
 // FREE live demo. Agents integrate what they can test end-to-end without money — the paid calls
 // come after it's wired in. The demo runs the exact paid code path, no watered-down output; the
@@ -767,6 +807,7 @@ setServedPaths([
   "/health", "/catalog", "/stats", "/funnel", "/wanted", "/dashboard", "/track-record",
   "/accuracy", "/demand", "/llms.txt", "/.well-known/x402.json", "/.well-known/agent.json",
   "/.well-known/x402", "/.well-known/agent", "/mcp", "/company", "/truth", "/favicon.ico",
+  "/model", "/calibration", "/signals", "/relaunches",
 ]);
 
 
@@ -804,6 +845,7 @@ app.listen(PORT, () => {
   console.log("");
   console.log(`  Try the paywall:  curl -i http://localhost:${PORT}/price?symbol=BTC`);
   console.log("  (expect HTTP 402 + payment instructions)\n");
+  startKeepalive(); // keep Render's free instance awake — a sleeping box loses every agent that probes it
   startHistory(); // begin collecting the liquidity time-series (the /onchain/liquidity moat)
   startRecord(); // begin the self-graded track record (/track-record — the public receipts)
   startTruth(); // begin the truth engine (every endpoint grades itself — /truth/weather)
@@ -849,10 +891,20 @@ function landingPage(): string {
   // Only call it inverted when BOTH buckets are thick enough to mean anything —
   // an "ok" bucket of three rows can invert on noise alone.
   const _inverted = _era.reportable && _pClear > _pFlag;
+  // A brand-new scoring era legitimately has zero graded calls until six hours of reality have
+  // elapsed. Printing a bare "0 calls graded" reads as though we have no evidence at all, when the
+  // evidence is the 1,022 rows the new model was fit and validated on. Say which it is.
+  const _eraFresh = _era.graded === 0;
   const proof =
     s.graded > 0
       ? `<p><b>Live track record</b> (self-graded, misses included — <a href="/track-record">full data</a>):
-         ${_era.graded} calls graded on the scorer running right now${_era.reportable ? ` · flagged tokens rugged ${_pFlag.toFixed(1)}% · tokens we called ok rugged ${_pClear.toFixed(1)}%` : ` · ${_era.ok_total} graded "ok" calls so far, too few to quote a rate honestly`}. <span style="color:#888">(${s.graded} graded across all scorer versions; we report the current one, because pooling would average over our own fixes.)</span></p>
+         ${_eraFresh
+           ? `the survival model went live 2026-08-11 and its first calls need 6h of elapsed reality before they can be
+              graded, so this era shows 0 graded so far — deliberately, rather than inheriting the retired scorer's
+              numbers. Its <a href="/model">walk-forward validation on the ${MODEL_META.trained_rows} rows already in the ledger</a>
+              is the evidence until then, and this counter is the one that will check it.`
+           : `${_era.graded} calls graded on the scorer running right now${_era.reportable ? ` · flagged tokens rugged ${_pFlag.toFixed(1)}% · tokens we called ok rugged ${_pClear.toFixed(1)}%` : ` · ${_era.ok_total} graded "ok" calls so far, too few to quote a rate honestly`}.`}
+         <span class="k">(${s.graded} graded across all scorer versions; we report the current one, because pooling would average over our own fixes.)</span></p>
          ${_inverted
            ? `<p style="border:1px solid #a33;background:#2a1414;border-radius:8px;padding:10px 12px">
               <b style="color:#ff8a8a">⚠ Our score is currently INVERTED — do not trade on the "ok" verdict.</b>
@@ -868,18 +920,57 @@ function landingPage(): string {
     <a href="/truth/signal">market calls</a> · <a href="/company">who runs this (an AI crew) + the real books</a>.</p>`;
   return `<!doctype html><meta charset="utf-8"><title>x402-seller</title>
 <style>
-  body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:720px;margin:48px auto;padding:0 20px;color:#111}
-  h1{font-size:22px;margin-bottom:4px} .sub{color:#666;margin-top:0}
-  table{border-collapse:collapse;width:100%;margin:20px 0} td,th{border:1px solid #e3e3e3;padding:8px 10px;text-align:left}
-  th{background:#fafafa} code{background:#f4f4f5;padding:1px 5px;border-radius:4px}
-  .k{color:#666} .pay{word-break:break-all}
+  /* Themed via variables because the page previously set color:#111 and no background: a visitor in
+     dark mode got near-black text on the browser's near-black canvas and the storefront was
+     effectively blank. Both schemes are now explicit. */
+  :root{
+    --bg:#fff; --fg:#111; --muted:#666; --line:#e3e3e3; --thead:#fafafa; --code:#f4f4f5;
+    --callout-bg:#fdf8e8; --callout-line:#d9c48a; --rule:#ccc; --link:#0b5cd5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#111315; --fg:#e8e8e8; --muted:#9aa0a6; --line:#2c3034; --thead:#191c1f; --code:#1e2226;
+      --callout-bg:#241f10; --callout-line:#7a6a35; --rule:#3a3f44; --link:#7fb2ff;
+    }
+  }
+  html{background:var(--bg)}
+  body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:720px;margin:48px auto;padding:0 20px;color:var(--fg);background:var(--bg)}
+  h1{font-size:22px;margin-bottom:4px} .sub{color:var(--muted);margin-top:0}
+  a{color:var(--link)}
+  table{border-collapse:collapse;width:100%;margin:20px 0} td,th{border:1px solid var(--line);padding:8px 10px;text-align:left}
+  th{background:var(--thead)} code{background:var(--code);padding:1px 5px;border-radius:4px}
+  .k{color:var(--muted)} .pay{word-break:break-all}
+  .callout{border:1px solid var(--callout-line);background:var(--callout-bg);border-radius:8px;padding:14px 16px;margin:20px 0}
+  .caveat{border-left:3px solid var(--rule);padding-left:12px;color:var(--muted)}
 </style>
 <h1>x402-seller</h1>
-<p class="sub">Rug protection + decision-ready intelligence for autonomous trading agents. No signup,
-no API key — pay per call in USDC (x402). Composite rug scores (static + live buy/sell simulation),
-a self-collected liquidity-drain detector, EVM + Solana. Verdict-first JSON, one call per decision.
+<p class="sub">Token survival probabilities for autonomous trading agents. No signup, no API key —
+pay per call in USDC (x402). One call returns a calibrated probability that a pool will still be
+there in six hours, with the out-of-sample hit rate for that confidence band attached.
 Agents: fetch <code>/llms.txt</code> or <code>/.well-known/x402.json</code> and go.
 <b>Try it free right now:</b> <code>GET /demo/vet?chain=base&address=0x…</code> (15 free per day, full paid output).</p>
+
+<div class="callout">
+<b>The standard rug heuristics are backwards on Base — and we have 1,022 graded outcomes showing it.</b>
+<p style="margin:8px 0 0">Every scanner scores "ownership renounced, source verified, LP locked" as
+<i>safer</i>. On our own ledger those tokens rugged <b>77.5%</b> of the time, while tokens that were
+<b>not</b> renounced rugged <b>4.8%</b>. Tokens carrying 5+ green flags rugged 85%. The cause is
+structural, not mysterious: Base launchpads auto-renounce, auto-verify and auto-lock everything they
+mint, so a full sweep of green flags is the fingerprint of a disposable memecoin, not evidence of
+safety.</p>
+<p style="margin:8px 0 0">We shipped that same inverted score until 2026-08-11. Our public ledger is
+what caught it — it graded our own scorer at <b>AUC 0.545</b>, a coin flip. It is now replaced by a
+model fit on those outcomes and validated walk-forward at <b>AUC 0.954</b> across 6 chronological
+folds. <a href="/model">The finding, the protocol and the calibration table</a> ·
+<a href="/track-record/raw">the raw labelled data, so you can refit it yourself</a>.</p>
+</div>
+
+<p class="caveat"><b>What we will not claim.</b>
+This predicts survival over <b>six hours</b>, which is the horizon an execution agent needs, and
+nothing longer. We pulled tokens this ledger graded "fine" at 6h and re-checked them two weeks later:
+<b>12 of 12 were dead</b>, and even among the deepest-liquidity clean calls only 2 of 12 survived.
+Almost everything launched on Base dies eventually. Anyone selling you a durable "safe" rating for
+this asset class is selling something they have not measured.</p>
 ${proof}
 ${truthLinks}
 <table><tr><th>Endpoint</th><th>Price</th><th>Returns</th></tr>${rows}</table>

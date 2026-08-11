@@ -30,7 +30,16 @@ import { empiricalRisk } from "./calibration.js";
 import { rawRows } from "./record.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_VET = process.env.PRICE_VET || "$0.01";
+// PRICING (revised 2026-08-11). Flat $0.01 across 23 endpoints priced the one thing nobody else
+// can reproduce the same as a BTC quote. /vet carries the survival model: a calibrated 6h
+// probability validated walk-forward at AUC 0.954, against free alternatives that ship the
+// inverted heuristic. Commodity feeds (price, stock, markets, weather, ETF flows) stay at $0.01
+// because free substitutes exist and charging more there just loses the call.
+// Sanity check on $0.05: an agent screening 10 candidates per entry spends $0.50 a position, which
+// on a $500 position is 0.10% — under the swap fee it is already paying to enter.
+// The MCP catalog has advertised /vet at $0.05 since launch, so this also ends a real mismatch
+// between the quoted price and the charged one.
+export const PRICE_VET = process.env.PRICE_VET || "$0.05";
 export const PRICE_BRIEF = process.env.PRICE_BRIEF || "$0.01";
 
 const SYMBOL_RE = /^[A-Z0-9-]{1,12}$/;
@@ -120,6 +129,11 @@ export async function vetToken(chainKey: string, address: string) {
           dex: market.dex,
         }
       : null,
+    // THE HEADLINE NUMBER. A calibrated probability with a horizon and a published out-of-sample hit
+    // rate, not a points total. Read this before `verdict`: the verdict is a three-way bucket, this
+    // is the actual estimate, and `observed_at_this_confidence` says what happened to the tokens we
+    // previously scored in the same band.
+    survival: (security as any)?.survival ?? null,
     security: security
       ? {
           risk_score: security.risk_score,
@@ -210,7 +224,7 @@ function accept(price: string, description: string) {
 }
 
 export const compositesRoutes = {
-  "GET /vet": accept(PRICE_VET, "Flagship one-call token go/no-go: market + composite rug score (static + live sim) + liquidity-drain trend → clear/caution/avoid"),
+  "GET /vet": accept(PRICE_VET, "Flagship one-call token go/no-go. Returns P(pool survives 6h) as a calibrated probability with the measured out-of-sample rug rate for that band attached, plus market data, live buy/sell simulation and liquidity-drain trend. Model fit on 1,022 of our own graded outcomes, walk-forward AUC 0.954 — and it encodes the finding that the standard 'renounced/verified/LP-locked = safe' heuristics are inverted on Base. See /model."),
   "GET /brief": accept(PRICE_BRIEF, "One-call market regime brief: spot + funding/OI + sentiment → risk_on/risk_off verdict"),
 };
 

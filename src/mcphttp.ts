@@ -18,9 +18,11 @@ import type { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { vetToken } from "./composites.js";
-import { launchRadar } from "./alpha.js";
-import { safetyReport } from "./safety.js";
+import { vetToken, PRICE_VET } from "./composites.js";
+import { launchRadar, PRICE_ALPHA } from "./alpha.js";
+import { safetyReport, PRICE_SAFETY } from "./safety.js";
+import { PRICE_LIQUIDITY } from "./history.js";
+import { PRICE_WEATHER } from "./ported/weather-consensus.js";
 import { trackRecordSummary } from "./record.js";
 import weatherHandler from "./ported/weather-consensus.handler.cjs";
 import { gateConsensus } from "./ported/weather-consensus.js";
@@ -154,13 +156,18 @@ function buildServer(): McpServer {
         service: "x402-seller — rug protection + safe-alpha for autonomous trading agents",
         base_url: BASE_URL,
         keyless: "no signup, no API key — pay per call in USDC on Base via x402",
+        // Prices are READ FROM THE PRICE CONSTANTS, never retyped. This block used to be a
+        // hand-written list quoting $0.08/$0.05/$0.03 while the paywall actually charged $0.01 for
+        // all of them — an agent that budgeted off the catalog was quoted one price and billed
+        // another. Deriving them makes that class of drift impossible.
         flagship: {
-          "GET /alpha/launches": "$0.08 — launch radar: discover + rug-screen fresh launches, ranked by liquidity depth (deepest first), with a per-token rug verdict",
-          "GET /vet": "$0.05 — one-token go/no-go",
-          "GET /onchain/safety": "$0.03 — composite rug score (static + live sim)",
-          "GET /onchain/liquidity": "$0.01 — liquidity-drain detector",
-          "GET /weather/consensus": "$0.03 — cross-source weather consensus + agreement score (multi-model ground truth beyond crypto)",
+          [`GET /alpha/launches`]: `${PRICE_ALPHA} — launch radar: discover + rug-screen fresh launches, ranked by liquidity depth (deepest first), with a per-token survival probability`,
+          [`GET /vet`]: `${PRICE_VET} — one-token go/no-go, carries the calibrated 6h survival model`,
+          [`GET /onchain/safety`]: `${PRICE_SAFETY} — survival model + static scan + live sell simulation`,
+          [`GET /onchain/liquidity`]: `${PRICE_LIQUIDITY} — liquidity-drain detector`,
+          [`GET /weather/consensus`]: `${PRICE_WEATHER} — cross-source weather consensus + agreement score (multi-model ground truth beyond crypto)`,
         },
+        model: `${BASE_URL}/model`,
         discovery: { catalog: `${BASE_URL}/catalog`, llms: `${BASE_URL}/llms.txt`, openapi: `${BASE_URL}/openapi.json`, track_record: `${BASE_URL}/track-record` },
         note: "This remote MCP server offers a free daily demo of vet_token / launch_radar / rug_check. For unlimited use, call the paid HTTP API with an x402 client.",
       }),

@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { getJson } from "./data.js";
 import { safetyReport } from "./safety.js";
 import { setVerdictAccuracy } from "./calib-cache.js";
+import { addressFingerprint } from "./survival.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Committed, git-versioned path: a GitHub Action snapshots it every ~30min, so
@@ -37,6 +38,7 @@ const LEDGER = path.join(DATA_DIR, "track_record.jsonl");
 
 const SWEEP_MS = Number(process.env.RECORD_SWEEP_MS || 30 * 60 * 1000); // 30 min
 const GRADE_AFTER_MS = 6 * 60 * 60 * 1000; // grade calls once they're 6h old
+const LONG_HORIZONS = [24, 72];            // and re-check survivors here, so "fine" carries a clock
 const MAX_ROWS = 2000;
 const NEW_PER_SWEEP = 6; // bound upstream load
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
@@ -91,21 +93,45 @@ type Row = {
   reuse?: number;      // how many times we had already seen this symbol before this call
   graded: boolean;
   outcome?: "rugged" | "dumped" | "fine";
-  liq_now_pct?: number | null; // % of original liquidity remaining at grading
+  liq_now_pct?: number | null; // % of original liquidity remaining at the 6h grade
   px_now_pct?: number | null;
   graded_after_h?: number;
+  /** Every horizon this row has been re-checked at. `outcome` above stays the 6h grade — it is the
+   *  model's target and the one an execution agent is buying — and these are the honesty tail. */
+  grades?: Array<{ h: number; at: number; liq_pct: number | null; px_pct: number | null; outcome: "rugged" | "dumped" | "fine" }>;
 };
 
-/** Longest run of repeated hex characters in the address body. A normally-deployed contract has a
- *  run of 3-4 by chance; vanity-mined and factory addresses run far longer. */
-function addressFingerprint(address: string): { addr_zero_run: number; addr_vanity: boolean } {
-  const body = address.replace(/^0x/, "").toLowerCase();
-  let best = 0, cur = 1;
-  for (let i = 1; i < body.length; i++) {
-    if (body[i] === body[i - 1]) { cur++; if (cur > best) best = cur; } else cur = 1;
-  }
-  if (best === 0) best = 1;
-  return { addr_zero_run: best, addr_vanity: best >= 8 };
+// addressFingerprint now lives in survival.ts and is imported, NOT redefined here. The recorder
+// writes the training features and the model consumes them; if the two ever computed this
+// differently the model would be scored on inputs it was never fit on, and nothing would fail
+// loudly. One definition, imported by both.
+
+/**
+ * Percentage of a call-time baseline still remaining, or null when the ratio is not trustworthy.
+ *
+ * Guards a real bug on the public record: one graded row reported px_now_pct = 5.1e+23. A token
+ * whose call-time price came back denormally small (a bad decimals read upstream) makes the
+ * denominator ~0, so any later price divides into an astronomical "percent remaining" — and that
+ * row then grades as "fine", silently crediting the scorer for a token it knew nothing about.
+ * Below the price floor, or above a ratio no real pool produces, we return null and let the other
+ * leg decide. Losing one signal is correct; fabricating one is not.
+ */
+const PX_FLOOR = 1e-18;      // below any genuine ERC-20 USD price — treat as a bad read
+const MAX_RATIO_PCT = 1e6;   // 10,000x. Real recoveries happen; 10^21 does not.
+export function ratioPct(nowV: number | null, baseV: number | null | undefined): number | null {
+  if (nowV === null || nowV === undefined) return null;
+  if (baseV === null || baseV === undefined || !(baseV > 0)) return null;
+  if (baseV < PX_FLOOR) return null;
+  const pct = (nowV / baseV) * 100;
+  if (!Number.isFinite(pct) || pct > MAX_RATIO_PCT) return null;
+  return Number(pct.toFixed(1));
+}
+
+/** rugged: <15% of the call-time baseline remains (or the pool vanished) · dumped: <50% · fine: otherwise */
+function classify(gone: boolean, liqPct: number | null, pxPct: number | null): "rugged" | "dumped" | "fine" {
+  if (gone || (liqPct !== null && liqPct < 15) || (pxPct !== null && pxPct < 15)) return "rugged";
+  if ((liqPct !== null && liqPct < 50) || (pxPct !== null && pxPct < 50)) return "dumped";
+  return "fine";
 }
 
 const rows: Row[] = [];
@@ -259,26 +285,46 @@ async function sweep(): Promise<void> {
         continue;
       }
       const now = await liqPx(r.address);
-      const liqPct = r.liq0 && r.liq0 > 0 && now.liq !== null ? Number(((now.liq / r.liq0) * 100).toFixed(1)) : null;
-      const pxPct = r.px0 && r.px0 > 0 && now.px !== null ? Number(((now.px / r.px0) * 100).toFixed(1)) : null;
+      const liqPct = ratioPct(now.liq, r.liq0);
+      const pxPct = ratioPct(now.px, r.px0);
       // Grading formula (published verbatim on the endpoint):
       //   rugged: <15% of original liquidity OR price remains (or pool vanished)
       //   dumped: <50% remains  ·  fine: otherwise
       const gone = now.liq === null && r.liq0 != null && r.liq0 > 0; // pool disappeared entirely
-      const outcome: Row["outcome"] =
-        gone || (liqPct !== null && liqPct < 15) || (pxPct !== null && pxPct < 15)
-          ? "rugged"
-          : (liqPct !== null && liqPct < 50) || (pxPct !== null && pxPct < 50)
-            ? "dumped"
-            : "fine";
+      const outcome = classify(gone, liqPct, pxPct);
       r.graded = true;
       r.outcome = outcome;
       r.liq_now_pct = liqPct;
       r.px_now_pct = pxPct;
       r.graded_after_h = Number(((Date.now() - r.t) / 3_600_000).toFixed(1));
+      r.grades = [{ h: 6, at: Date.now(), liq_pct: liqPct, px_pct: pxPct, outcome }];
       persist(r); // append the graded version; loader keeps the latest per id
     } catch { /* grade next sweep */ }
     await new Promise((res) => setTimeout(res, 300));
+  }
+
+  // 3. LONG-HORIZON RE-GRADES (2026-08-11). The 6h grade is what the model predicts, and it is the
+  //    horizon an execution agent cares about — but on its own it was quietly misleading. We pulled
+  //    tokens this ledger marked "fine" at 6h and checked them two weeks later: 12 of 12 were dead,
+  //    and in the deepest-liquidity clean band still only 2 of 12 survived. Publishing "fine"
+  //    without saying "…for six hours" reads as a safety rating, and it is not one. So we now
+  //    re-check every graded row at 24h and 72h and publish all three side by side.
+  for (const h of LONG_HORIZONS) {
+    const ms = h * 3_600_000;
+    const dueLong = rows
+      .filter((r) => r.graded && r.outcome && Date.now() - r.t >= ms && !(r.grades ?? []).some((x) => x.h === h))
+      .slice(0, 6);
+    for (const r of dueLong) {
+      try {
+        const now = await liqPx(r.address);
+        const liqPct = ratioPct(now.liq, r.liq0);
+        const pxPct = ratioPct(now.px, r.px0);
+        const gone = now.liq === null && r.liq0 != null && r.liq0 > 0;
+        r.grades = [...(r.grades ?? []), { h, at: Date.now(), liq_pct: liqPct, px_pct: pxPct, outcome: classify(gone, liqPct, pxPct) }];
+        persist(r);
+      } catch { /* retry next sweep */ }
+      await new Promise((res) => setTimeout(res, 300));
+    }
   }
 }
 
@@ -338,6 +384,20 @@ export function trackRecordSummary() {
     ok_total: graded.filter((r) => r.verdict === "ok").length,
     ok_rugged: rugs.filter((r) => r.verdict === "ok").length,
   };
+
+  // ── SURVIVAL DECAY BY HORIZON ──
+  // The number that stops "fine" from being read as "safe". Of the tokens still alive at 6h, how
+  // many are alive at 24h, and at 72h? Anyone selling a static safety score owes their buyer this
+  // curve and does not publish it.
+  const horizonDecay = [6, ...LONG_HORIZONS].map((h) => {
+    const at = graded
+      .map((r) => (h === 6 ? (r.outcome ? { outcome: r.outcome } : null) : (r.grades ?? []).find((x) => x.h === h)))
+      .filter(Boolean) as Array<{ outcome: string }>;
+    if (!at.length) return { horizon_h: h, n: 0, still_alive_pct: null as number | null };
+    const alive = at.filter((x) => x.outcome === "fine").length;
+    return { horizon_h: h, n: at.length, still_alive_pct: Number(((100 * alive) / at.length).toFixed(1)) };
+  });
+
   return {
     what_this_is:
       "Our composite rug score, graded against reality in public. Every ~30min we score fresh/trending Base tokens " +
@@ -347,6 +407,11 @@ export function trackRecordSummary() {
       "rugged: <15% of call-time liquidity or price remains (or pool vanished) · dumped: <50% remains · fine: otherwise. " +
       "'Flagged' means our verdict was warning or danger BEFORE the outcome.",
     stats,
+    horizon_decay: {
+      what: "Of the calls we graded at each horizon, how many still had a live pool. 'fine' at 6h is " +
+        "not a safety rating — it is a six-hour claim, and this is the decay behind it.",
+      rows: horizonDecay,
+    },
     recent_graded: graded.slice(-50).reverse().map((r) => ({
       when: new Date(r.t).toISOString(),
       token: r.symbol,
@@ -357,6 +422,7 @@ export function trackRecordSummary() {
       liquidity_remaining_pct: r.liq_now_pct,
       price_remaining_pct: r.px_now_pct,
       graded_after_h: r.graded_after_h,
+      later: (r.grades ?? []).filter((x) => x.h > 6).map((x) => ({ h: x.h, outcome: x.outcome })),
     })),
     note: "Ledger accrues while the service runs; a redeploy resets it (free-tier disk). Depth compounds between deploys.",
     paid_endpoints_using_this_exact_scorer: ["/vet", "/onchain/safety", "/screen"],

@@ -16,6 +16,12 @@ services:
         value: "0x72B944dA66263bE35c2a2eDFeF5c525d58fa53Df"
       - key: NETWORK
         value: "eip155:8453"           # Base MAINNET — real USDC
+      - key: PUBLIC_BASE_URL
+        # Used by the in-process keepalive to ping itself through the public hostname, which is what
+        # resets Render's 15-minute idle timer. Render also injects RENDER_EXTERNAL_URL and the
+        # keepalive falls back to it, but pinning it here means the behaviour does not depend on a
+        # platform-provided variable staying available.
+        value: "https://x402-seller-m8nx.onrender.com"
       - key: FACILITATOR_URL
         value: "https://facilitator.payai.network"   # keyless, free 10k settlements/mo, settles Base mainnet
         # verified locally 2026-07-18: mainnet 402 generates with real USDC asset 0x8335…2913.

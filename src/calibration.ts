@@ -51,8 +51,19 @@ const MIN_SPLIT = 12;  // per side of a signal split
  */
 const ERAS: Array<{ from: string; label: string; why: string }> = [
   {
+    from: "2026-08-11T04:00:00.000Z",
+    label: "current (calibrated survival model)",
+    why:
+      "The hand-weighted score was retired. Measured across 1,022 graded rows it ran at AUC 0.545 out of sample -- " +
+      "a coin flip, and on some folds 0.42, worse than guessing -- because the heuristics it encoded are INVERTED on " +
+      "Base: renounced tokens rugged 77.5% vs 4.8% for not-renounced, and 5+ green flags rugged 85%. Base launchpads " +
+      "auto-renounce, auto-verify and auto-lock everything they mint, so a full green-flag sweep is the fingerprint " +
+      "of a disposable memecoin rather than evidence of safety. Replaced by a logistic model fit on our own outcomes " +
+      "and validated walk-forward at AUC 0.954. See /model.",
+  },
+  {
     from: "2026-07-25T05:37:33.000Z",
-    label: "current (since the LP-lock fix)",
+    label: "hand-weighted score (retired 2026-08-11)",
     why: "GoPlus reports the 1000-wei MINIMUM_LIQUIDITY burn every UniswapV2 pool makes at creation as a 'locked' LP holder, so a `.some(is_locked)` check returned true for essentially every V2 token alive -- cancelling 55 risk points and raising a green flag while ~all of the LP sat unlocked. Now requires a majority of LP supply to be genuinely locked.",
   },
   { from: "1970-01-01T00:00:00.000Z", label: "original scorer (retired)", why: "Superseded by the LP-lock fix above." },
