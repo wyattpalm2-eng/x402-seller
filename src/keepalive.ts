@@ -49,7 +49,12 @@ export function startKeepalive(): void {
     return;
   }
   started = true;
-  const target = `${base}/health`;
+  // Deliberately NOT /health: that endpoint probes the upstreams (cached 5 min), so pinging it
+  // every 10 minutes would spend real DexScreener and CoinGecko requests purely to stay awake —
+  // and DexScreener rate-limiting Render's shared egress IP is already the main source of degraded
+  // answers. /catalog is served from memory and costs nothing upstream. Any inbound request resets
+  // Render's idle timer; it does not have to be the health check.
+  const target = `${base}/catalog`;
   let ok = 0, failed = 0;
 
   const ping = async () => {
