@@ -30,6 +30,7 @@ import weatherHandler from "./ported/weather-consensus.handler.cjs";
 import { etfFlowsRouter, etfFlowsRoutes, etfFlowsCatalog, validateEtfFlows } from "./ported/etf-flows.js";
 import { tokenConcentrationRouter, tokenConcentrationRoutes, tokenConcentrationCatalog, validateTokenConcentration } from "./ported/token-concentration.js";
 import { wxAgRouter, wxAgRoutes, wxAgCatalog, validateWxAg } from "./ported/wx-ag.js";
+import { yieldSurfaceRouter, yieldSurfaceRoutes, yieldSurfaceCatalog, validateYieldSurface } from "./ported/yield-surface.js";
 import { stormRiskRouter, stormRiskRoutes, stormRiskCatalog, validateStormRisk } from "./ported/storm-risk.js";
 import { walletFingerprintRouter, walletFingerprintRoutes, walletFingerprintCatalog, validateWalletFingerprint } from "./ported/wallet-fingerprint.js";
 import { tokenRiskRouter, tokenRiskRoutes, tokenRiskCatalog, validateTokenRisk } from "./ported/token-risk.js";
@@ -104,6 +105,7 @@ const CATALOG = [
   ...alphaCatalog,
   ...weatherCatalog,
   ...etfFlowsCatalog,
+  ...yieldSurfaceCatalog,
   ...tokenConcentrationCatalog,
   ...wxAgCatalog,
   ...stormRiskCatalog,
@@ -141,6 +143,7 @@ const routes = {
   ...alphaRoutes,
   ...weatherRoutes,
   ...etfFlowsRoutes,
+  ...yieldSurfaceRoutes,
   ...tokenConcentrationRoutes,
   ...wxAgRoutes,
   ...stormRiskRoutes,
@@ -743,6 +746,7 @@ app.use((req, res, next) => {
   else if (req.path.startsWith("/token/concentration/")) err = validateTokenConcentration(q, req.path);
   else if (req.path.startsWith("/wx/ag/")) err = validateWxAg(q, req.path);
   else if (req.path === "/wx/storm") err = validateStormRisk(q, req.path);
+  else if (req.path === "/yield/surface") err = validateYieldSurface(q, req.path);
   else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
   else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
   else if (req.path.startsWith("/vet/deployer/")) err = validateDeployerReputation(q, req.path);
@@ -761,6 +765,7 @@ app.use(compositesRouter);
 app.use(alphaRouter);
 app.use(weatherRouter);
 app.use(etfFlowsRouter);
+app.use(yieldSurfaceRouter);
 app.use(tokenConcentrationRouter);
 app.use(wxAgRouter);
 app.use(stormRiskRouter);

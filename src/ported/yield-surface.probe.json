@@ -1,0 +1,9 @@
+{
+  "id": "S-022",
+  "route": "GET /yield/surface",
+  "expect402": [
+    "/yield/surface?chain=base",
+    "/yield/surface?chain=eth"
+  ],
+  "expect400": []
+}
