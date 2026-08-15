@@ -69,6 +69,7 @@ const P = {
   tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.01",
   tokenConcentration: process.env.PRICE_TOKEN_CONCENTRATION || "$0.01",
   etfFlows: process.env.PRICE_ETF_FLOWS || "$0.01",
+  yieldSurface: process.env.PRICE_YIELD_SURFACE || "$0.01",
 };
 
 export interface Endpoint {
@@ -324,6 +325,19 @@ export const ENDPOINTS: Endpoint[] = [
       days: { type: "string", required: false, default: "5", example: "5" },
     },
     output_example: { as_of: "2026-07-25", symbols_queried: ["IBIT", "FBTC", "ARKB"], total_net_flow_usd: 125000000, per_symbol: [{ symbol: "IBIT", net_flow_usd: 80000000, close: 57.32, volume: 12000000 }, { symbol: "FBTC", net_flow_usd: 30000000, close: 55.10, volume: 4500000 }, { symbol: "ARKB", net_flow_usd: 15000000, close: 52.80, volume: 2100000 }], source: "Yahoo Finance OHLCV", methodology: "volume-weighted price-action estimate" },
+  },
+  {
+    method: "GET", path: "/yield/surface", price: P.yieldSurface,
+    description: "Risk-adjusted yield surface across Base and Ethereum lending, DEX, and restaking pools -- pulls real pool data from yields.llama.fi, computes IL-risk-adjusted APY and cross-protocol TVL context, sorted by adjusted return. Replaces 3+ API fetches plus APY math, TVL normalization, and risk weighting an agent would do locally.",
+    input: {
+      chain: { type: "string", required: false, default: "base", enum: ["base", "ethereum"] },
+    },
+    output_example: {
+      surface: [{ project: "Aave", symbol: "aUSDC", chain: "Ethereum", apy: 4.2, tvlUsd: 4500000000, ilRisk: "no", exposure: "single", stablecoin: true, risk_score: 100, adjusted_apy_pct: 4.4 }, { project: "Uniswap", symbol: "USDC-WETH", chain: "Ethereum", apy: 12.8, tvlUsd: 890000000, ilRisk: "yes", exposure: "multiple", stablecoin: false, risk_score: 70, adjusted_apy_pct: 3.8 }],
+      chains_covered: ["base", "ethereum"],
+      count: 6,
+      defillama_context: { base_tvl_usd: 25000000000, eth_tvl_usd: 95000000000 },
+    },
   },
 ];
 
