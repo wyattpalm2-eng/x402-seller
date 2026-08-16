@@ -43,6 +43,7 @@ import { startTruthSignal, truthSignalSummary, truthSignalRaw } from "./truth-si
 import { companyPage } from "./company.js";
 import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
+import { handleGrantsMcp, grantsMcpMethodNotAllowed } from "./grantsmcp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { discoveryRouter, ENDPOINTS } from "./discovery.js";
 import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
@@ -577,6 +578,13 @@ app.post("/mcp", express.json({ limit: "512kb" }), handleMcp);
 app.get("/mcp", mcpMethodNotAllowed);
 app.delete("/mcp", mcpMethodNotAllowed);
 
+// Federal grants MCP server (free, keyless upstreams, no paywall): POST /grants/mcp.
+// Separate endpoint + separate registry listing from /mcp: that one serves trading
+// agents, this one serves nonprofits and small businesses.
+app.post("/grants/mcp", express.json({ limit: "512kb" }), handleGrantsMcp);
+app.get("/grants/mcp", grantsMcpMethodNotAllowed);
+app.delete("/grants/mcp", grantsMcpMethodNotAllowed);
+
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
 app.use(discoveryRouter);
 
@@ -806,7 +814,7 @@ setServedPaths([
   ...Object.keys(routes).map((k) => k.split(" ")[1]),
   "/health", "/catalog", "/stats", "/funnel", "/wanted", "/dashboard", "/track-record",
   "/accuracy", "/demand", "/llms.txt", "/.well-known/x402.json", "/.well-known/agent.json",
-  "/.well-known/x402", "/.well-known/agent", "/mcp", "/company", "/truth", "/favicon.ico",
+  "/.well-known/x402", "/.well-known/agent", "/mcp", "/grants/mcp", "/company", "/truth", "/favicon.ico",
   "/model", "/calibration", "/signals", "/relaunches",
 ]);
 
