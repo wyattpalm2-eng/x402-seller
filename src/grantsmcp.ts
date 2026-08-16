@@ -71,8 +71,13 @@ function decodeEntities(s: any): string | null {
   return String(s)
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, " ")
+    .replace(/&(rsquo|lsquo|apos|#39);/g, "'")
+    .replace(/&(rdquo|ldquo|quot);/g, '"')
+    .replace(/&(mdash|ndash);/g, "-")
+    .replace(/&hellip;/g, "...")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")   // last, so "&amp;rsquo;" cannot resurrect an entity
     .replace(/[​-‍﻿]/g, "")   // zero-width junk, now decoded
     .trim();
 }
