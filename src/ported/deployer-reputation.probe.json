@@ -1,0 +1,9 @@
+{
+  "id": "S-036",
+  "route": "GET /vet/deployer/:address",
+  "expect402": [
+    "/vet/deployer/0xb2000000000000000000009fc0e6e7fd3823a701",
+    "/vet/deployer/0x1234567890123456789012345678901234567890"
+  ],
+  "expect400": []
+}

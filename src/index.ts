@@ -33,6 +33,7 @@ import { wxAgRouter, wxAgRoutes, wxAgCatalog, validateWxAg } from "./ported/wx-a
 import { stormRiskRouter, stormRiskRoutes, stormRiskCatalog, validateStormRisk } from "./ported/storm-risk.js";
 import { walletFingerprintRouter, walletFingerprintRoutes, walletFingerprintCatalog, validateWalletFingerprint } from "./ported/wallet-fingerprint.js";
 import { tokenRiskRouter, tokenRiskRoutes, tokenRiskCatalog, validateTokenRisk } from "./ported/token-risk.js";
+import { deployerReputationRouter, deployerReputationRoutes, deployerReputationCatalog, validateDeployerReputation, PRICE_DEPLOYER_REPUTATION } from "./ported/deployer-reputation.js";
 import { accuracyPage } from "./accuracy.js";
 import { MODEL_META, CALIBRATION } from "./survival.js";
 import { startKeepalive, keepaliveStats } from "./keepalive.js";
@@ -108,6 +109,7 @@ const CATALOG = [
   ...stormRiskCatalog,
   ...walletFingerprintCatalog,
   ...tokenRiskCatalog,
+  ...deployerReputationCatalog,
 ];
 
 // ─── x402 wiring ─────────────────────────────────────────────────────────
@@ -144,6 +146,7 @@ const routes = {
   ...stormRiskRoutes,
   ...walletFingerprintRoutes,
   ...tokenRiskRoutes,
+  ...deployerReputationRoutes,
 };
 
 // ─── Bazaar discovery extensions ─────────────────────────────────────────
@@ -742,6 +745,7 @@ app.use((req, res, next) => {
   else if (req.path === "/wx/storm") err = validateStormRisk(q, req.path);
   else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
   else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
+  else if (req.path.startsWith("/vet/deployer/")) err = validateDeployerReputation(q, req.path);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
 });
@@ -762,6 +766,7 @@ app.use(wxAgRouter);
 app.use(stormRiskRouter);
 app.use(walletFingerprintRouter);
 app.use(tokenRiskRouter);
+app.use(deployerReputationRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
 app.get("/price", (req, res) => {
