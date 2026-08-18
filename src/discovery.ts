@@ -70,6 +70,7 @@ const P = {
   tokenConcentration: process.env.PRICE_TOKEN_CONCENTRATION || "$0.01",
   etfFlows: process.env.PRICE_ETF_FLOWS || "$0.01",
   yieldSurface: process.env.PRICE_YIELD_SURFACE || "$0.01",
+  deployer: process.env.PRICE_DEPLOYER_REPUTATION || "$0.05",
 };
 
 export interface Endpoint {
@@ -337,6 +338,26 @@ export const ENDPOINTS: Endpoint[] = [
       chains_covered: ["base", "ethereum"],
       count: 6,
       defillama_context: { base_tvl_usd: 25000000000, eth_tvl_usd: 95000000000 },
+    },
+  },
+  {
+    method: "GET", path: "/vet/deployer/:address", price: P.deployer,
+    description: "DEPLOYER TRUST SCORE (0-100) for a Base address: derives a score from our own graded track_record.jsonl -- rug rate vs base rate, relauncher flag, elapsed-time avg time-to-rug, and confidence by sample size. Bots calling this skip buildling a deployer tracker plus the multi-month track record ourselves; the score is only meaningful because we grade in public over time. Address validated pre-paywall (400, never a charge).",
+    input: {
+      address: { type: "string", required: true, example: "0x72B9F28520240A501C687C9e7460AB950d8bE285" },
+      chain: { type: "string", required: false, default: "base", enum: ["base", "eth"] },
+    },
+    output_example: {
+      query: { address: "0x72B9F28520240A501C687C9e7460AB950d8bE285", chain: "base" },
+      deployer_score: 35,
+      tokens_launched: 4,
+      rugs_observed: 3,
+      rug_rate: 0.75,
+      avg_time_to_rug_hours: 18.5,
+      relauncher: true,
+      n: 4,
+      confidence: "medium",
+      disclaimer: "Score is relative to our base rate; low sample size inflates confidence interval.",
     },
   },
 ];
