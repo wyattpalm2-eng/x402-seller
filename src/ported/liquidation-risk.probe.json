@@ -1,0 +1,11 @@
+{
+  "id": "S-026",
+  "route": "GET /liquidation/risk?address=:address&chain=base",
+  "expect402": [
+    "/liquidation/risk?address=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&chain=base",
+    "/liquidation/risk?address=0xd8dA6BF26964aF9D7eEd3601E6817e6c4c0c35a6&chain=eth"
+  ],
+  "expect400": [
+    "/liquidation/risk?address=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&chain=__nope__"
+  ]
+}
