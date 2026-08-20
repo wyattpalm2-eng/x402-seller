@@ -80,6 +80,33 @@ export interface Endpoint {
   description: string;
   input: Record<string, { type: string; required: boolean; default?: string; example?: string; enum?: string[] }>;
   output_example: any;
+  /** JSON Schema for the paid 200 JSON body. Examples are not a contract. */
+  output_schema?: Record<string, unknown>;
+}
+
+/**
+ * GET /price always returns these fields on a successful paid response.
+ * `src/index.ts` `deliver()` spreads the Coinbase spot payload and overwrites
+ * `source` with `"x402-seller"`. Coinbase also supplies optional upstream
+ * metadata, but it is not typed here because a malformed HTTP-200 response can
+ * carry arbitrary values. Extra fields stay allowed.
+ */
+export const PRICE_SUCCESS_SCHEMA = {
+  type: "object",
+  required: ["symbol", "price_usd", "source", "as_of"],
+  properties: {
+    symbol: { type: "string", description: "Normalized Coinbase pair, e.g. BTC-USD" },
+    price_usd: { type: "number", description: "Spot price in USD" },
+    source: { type: "string", description: "Seller identity on a paid 200; always x402-seller" },
+    as_of: { type: "string", description: "ISO-8601 timestamp of the cached spot read" },
+  },
+};
+
+export function paidSuccessDocument(endpoint: Endpoint) {
+  return {
+    schema: endpoint.output_schema ?? { type: "object" },
+    example: endpoint.output_example,
+  };
 }
 
 // Exported so index.ts can derive per-route Bazaar discovery extensions from the
@@ -191,7 +218,15 @@ export const ENDPOINTS: Endpoint[] = [
     method: "GET", path: "/price", price: P.price,
     description: "Spot crypto price in USD from CoinGecko, normalized to one call. Saves an agent stitching price feeds from multiple tickers or managing a CoinGecko key; the price is the work completed, not a raw feed to process further.",
     input: { symbol: { type: "string", required: false, default: "BTC", example: "ETH" } },
-    output_example: { symbol: "BTC-USD", price_usd: 63950.12, source: "coinbase" },
+    output_schema: PRICE_SUCCESS_SCHEMA,
+    output_example: {
+      symbol: "BTC-USD",
+      price_usd: 63950.12,
+      source: "x402-seller",
+      as_of: "2026-08-20T16:00:00.000Z",
+      base: "BTC",
+      currency: "USD",
+    },
   },
   {
     method: "GET", path: "/stock", price: P.stock,
@@ -433,7 +468,7 @@ function acceptsEntry(priceStr: string) {
 }
 
 /** Build the OpenAPI 3.1 discovery document x402scan requires at GET /openapi.json. */
-function buildOpenApi(base: string) {
+export function buildOpenApi(base: string) {
   const paths: Record<string, any> = {};
   for (const e of ENDPOINTS) {
     const parameters = Object.entries(e.input).map(([name, spec]) => ({
@@ -456,7 +491,7 @@ function buildOpenApi(base: string) {
         responses: {
           "200": {
             description: "Paid response",
-            content: { "application/json": { schema: { type: "object" }, example: e.output_example } },
+            content: { "application/json": paidSuccessDocument(e) },
           },
           "402": { description: "Payment required (x402)" },
         },
