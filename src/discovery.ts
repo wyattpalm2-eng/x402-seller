@@ -216,7 +216,7 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/price", price: P.price,
-    description: "Spot crypto price in USD from CoinGecko, normalized to one call. Saves an agent stitching price feeds from multiple tickers or managing a CoinGecko key; the price is the work completed, not a raw feed to process further.",
+    description: "Spot crypto price in USD from Coinbase, normalized to one call. Saves an agent stitching price feeds from multiple tickers or handling provider response details; the price is the work completed, not a raw feed to process further.",
     input: { symbol: { type: "string", required: false, default: "BTC", example: "ETH" } },
     output_schema: PRICE_SUCCESS_SCHEMA,
     output_example: {
