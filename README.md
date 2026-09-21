@@ -41,6 +41,24 @@ const r = await payFetch("https://x402-seller-m8nx.onrender.com/vet?chain=base&a
 // 402 → auto-pay USDC on Base → data. That's the whole integration.
 ```
 
+### Add Nano (XNO) as a second settlement kind
+
+Your value is one-call rug protection paid in USDC on Base via x402 — no signup,
+no API key. But an agent vetting many launches pays **Base gas per call on top of
+the USDC price**, and for sub-cent per-call pricing that gas can approach the
+price itself. Nano is a layer-1 block-lattice with **zero protocol fees** (no
+gas, no validator or miner to pay) and ~0.3 s confirmed finality; its x402
+dialect is a pure ED25519 send, so the three-line `wrapFetchWithPayment` flow
+stays identical and the settle becomes feeless. An agent draining a whole token
+watchlist pays no gas at all.
+
+Independent, on-chain evidence the buyer side already works: an
+OpenAI-Agents-SDK agent (openai-agents-nano, thin on the MIT-licensed feeless402
+client) already settled a real third-party x402 seller on 2026-09-18 in
+**0.00001292 XNO** — block
+`E67FB89426F46E6AE4E0E5750B5F814A699965B8639DA89F38689EA1AFE57FC3`,
+`confirmed:true` on the Nano network.
+
 ## Endpoints
 
 | Route | Price | What you get |
