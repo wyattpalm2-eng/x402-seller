@@ -9,7 +9,8 @@
     "dev": "tsx watch src/index.ts",
     "wallet": "tsx src/wallet.ts",
     "client": "tsx src/client.ts",
-    "mcp": "tsx mcp/server.mts"
+    "mcp": "tsx mcp/server.mts",
+    "test": "node --test test/"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
