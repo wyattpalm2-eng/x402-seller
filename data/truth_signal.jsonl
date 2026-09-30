@@ -327,7 +327,7 @@
 {"id": "signal:ETH:2026-09-28T12", "t": 1790599222925, "kind": "signal", "symbol": "ETH", "slot": "2026-09-28T12", "verdict": "bearish", "momentum": -0.2479, "price0": 2677.155, "graded": false}
 {"id": "brief:BTC:2026-09-28T12", "t": 1790599223257, "kind": "brief", "symbol": "BTC", "slot": "2026-09-28T12", "verdict": "neutral", "price0": 83305.455, "graded": false}
 {"id": "brief:BTC:2026-09-29T00", "t": 1790651917207, "kind": "brief", "symbol": "BTC", "slot": "2026-09-29T00", "verdict": "neutral", "price0": 82912.695, "graded": true, "price24": 83359.995, "change_pct": 0.54, "hit": true, "graded_after_h": 25, "graded_at": "2026-09-30T04:17:50.403Z"}
-{"id": "brief:BTC:2026-09-29T12", "t": 1790684271954, "kind": "brief", "symbol": "BTC", "slot": "2026-09-29T12", "verdict": "neutral", "price0": 84382.335, "graded": false}
+{"id": "brief:BTC:2026-09-29T12", "t": 1790684271954, "kind": "brief", "symbol": "BTC", "slot": "2026-09-29T12", "verdict": "neutral", "price0": 84382.335, "graded": true, "price24": 85437.08, "change_pct": 1.25, "hit": false, "graded_after_h": 25, "graded_at": "2026-09-30T13:17:48.689Z"}
 {"id": "brief:BTC:2026-09-30T00", "t": 1790727472339, "kind": "brief", "symbol": "BTC", "slot": "2026-09-30T00", "verdict": "neutral", "price0": 83514.855, "graded": false}
 {"id": "signal:BTC:2026-09-30T00", "t": 1790741870386, "kind": "signal", "symbol": "BTC", "slot": "2026-09-30T00", "verdict": "neutral", "momentum": 0.0455, "price0": 83359.995, "graded": false}
 {"id": "signal:ETH:2026-09-30T00", "t": 1790741870403, "kind": "signal", "symbol": "ETH", "slot": "2026-09-30T00", "verdict": "neutral", "momentum": 0.0406, "price0": 2674.77, "graded": false}
