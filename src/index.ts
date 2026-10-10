@@ -47,7 +47,7 @@ import { startRecord, trackRecordSummary, rawRows } from "./record.js";
 import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { handleGrantsMcp, grantsMcpMethodNotAllowed } from "./grantsmcp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { discoveryRouter, ENDPOINTS } from "./discovery.js";
+import { discoveryRouter, ENDPOINTS, paidSuccessDocument } from "./discovery.js";
 import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
 import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } from "./funnel.js";
 import { getUpstreamHealth, summarize } from "./upstream.js";
@@ -190,7 +190,7 @@ for (const ep of ENDPOINTS) {
       ),
       required: Object.entries(ep.input).filter(([, v]) => v.required).map(([k]) => k),
     },
-    output: { example: ep.output_example },
+    output: paidSuccessDocument(ep),
   });
 }
 
