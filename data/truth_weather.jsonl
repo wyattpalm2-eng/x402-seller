@@ -538,3 +538,9 @@
 {"id": "miami:2026-10-20", "t": 1792459673423, "city": "miami", "lat": 25.76, "lon": -80.19, "date": "2026-10-20", "predicted_max_c": 29.4, "consensus_now_c": 26.9, "sources_used": 3, "graded": false}
 {"id": "london:2026-10-20", "t": 1792459673620, "city": "london", "lat": 51.51, "lon": -0.13, "date": "2026-10-20", "predicted_max_c": 12.9, "consensus_now_c": 11.8, "sources_used": 2, "graded": false}
 {"id": "tokyo:2026-10-20", "t": 1792459673837, "city": "tokyo", "lat": 35.68, "lon": 139.69, "date": "2026-10-20", "predicted_max_c": 25.3, "consensus_now_c": 23, "sources_used": 2, "graded": false}
+{"id": "nyc:2026-10-21", "t": 1792543578557, "city": "nyc", "lat": 40.71, "lon": -74.01, "date": "2026-10-21", "predicted_max_c": 21.6, "consensus_now_c": 17.5, "sources_used": 3, "graded": false}
+{"id": "la:2026-10-21", "t": 1792543578755, "city": "la", "lat": 34.05, "lon": -118.24, "date": "2026-10-21", "predicted_max_c": 29, "consensus_now_c": 25.7, "sources_used": 3, "graded": false}
+{"id": "chicago:2026-10-21", "t": 1792543578953, "city": "chicago", "lat": 41.88, "lon": -87.63, "date": "2026-10-21", "predicted_max_c": 17.4, "consensus_now_c": 17.2, "sources_used": 3, "graded": false}
+{"id": "miami:2026-10-21", "t": 1792543579149, "city": "miami", "lat": 25.76, "lon": -80.19, "date": "2026-10-21", "predicted_max_c": 28, "consensus_now_c": 26.6, "sources_used": 3, "graded": false}
+{"id": "london:2026-10-21", "t": 1792543579347, "city": "london", "lat": 51.51, "lon": -0.13, "date": "2026-10-21", "predicted_max_c": 12.9, "consensus_now_c": 10.6, "sources_used": 2, "graded": false}
+{"id": "tokyo:2026-10-21", "t": 1792543579549, "city": "tokyo", "lat": 35.68, "lon": 139.69, "date": "2026-10-21", "predicted_max_c": 28.2, "consensus_now_c": 23.5, "sources_used": 2, "graded": false}
