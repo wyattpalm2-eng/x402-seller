@@ -468,3 +468,4 @@
 {"id": "brief:BTC:2026-10-27T00", "t": 1793061964595, "kind": "brief", "symbol": "BTC", "slot": "2026-10-27T00", "verdict": "neutral", "price0": 80145.88, "graded": false}
 {"id": "brief:BTC:2026-10-27T12", "t": 1793132797605, "kind": "brief", "symbol": "BTC", "slot": "2026-10-27T12", "verdict": "neutral", "price0": 80612.305, "graded": false}
 {"id": "brief:BTC:2026-10-28T00", "t": 1793159850042, "kind": "brief", "symbol": "BTC", "slot": "2026-10-28T00", "verdict": "neutral", "price0": 81021.565, "graded": false}
+{"id": "brief:BTC:2026-10-28T12", "t": 1793192205288, "kind": "brief", "symbol": "BTC", "slot": "2026-10-28T12", "verdict": "neutral", "price0": 80617.465, "graded": false}
