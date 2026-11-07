@@ -509,3 +509,6 @@
 {"id": "signal:BTC:2026-11-07T00", "t": 1794020505052, "kind": "signal", "symbol": "BTC", "slot": "2026-11-07T00", "verdict": "neutral", "momentum": -0.0377, "price0": 75964.655, "graded": false}
 {"id": "signal:ETH:2026-11-07T00", "t": 1794020505071, "kind": "signal", "symbol": "ETH", "slot": "2026-11-07T00", "verdict": "neutral", "momentum": 0.0379, "price0": 2245.365, "graded": false}
 {"id": "brief:BTC:2026-11-07T00", "t": 1794020505409, "kind": "brief", "symbol": "BTC", "slot": "2026-11-07T00", "verdict": "neutral", "price0": 75964.655, "graded": false}
+{"id": "brief:BTC:2026-11-07T12", "t": 1794052863496, "kind": "brief", "symbol": "BTC", "slot": "2026-11-07T12", "verdict": "neutral", "price0": 75896.345, "graded": false}
+{"id": "signal:BTC:2026-11-07T12", "t": 1794056460061, "kind": "signal", "symbol": "BTC", "slot": "2026-11-07T12", "verdict": "neutral", "momentum": -0.0353, "price0": 75802.365, "graded": false}
+{"id": "signal:ETH:2026-11-07T12", "t": 1794056460076, "kind": "signal", "symbol": "ETH", "slot": "2026-11-07T12", "verdict": "neutral", "momentum": 0.0266, "price0": 2238.72, "graded": false}
