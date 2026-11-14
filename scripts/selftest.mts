@@ -2,7 +2,11 @@
  * selftest — assertions over the pieces that decide what a buyer is told.
  * Run: npx tsx scripts/selftest.mts
  */
+import express from "express";
+import type { AddressInfo } from "node:net";
+import { decodeReceiptHeader, generateReceiptKeyPair, verifyReceipt } from "@paxiom/receipts";
 import { ratioPct } from "../src/record.js";
+import { createSellerReceiptSetup, priceToAtomicUsdc } from "../src/receipts.js";
 import { survival, addressFingerprint, CALIBRATION, MODEL_META } from "../src/survival.js";
 
 let pass = 0, fail = 0;
@@ -97,5 +101,115 @@ ok("highest band is genuinely doomed", CALIBRATION[CALIBRATION.length - 1].obser
 ok("every published band has support", CALIBRATION.every((c) => c.n >= 5));
 ok("validation beat the retired scorer", MODEL_META.validation.pooled_auc > MODEL_META.validation.previous_scorer_auc + 0.3);
 
+console.log("\npaxiom delivery receipts — opt-in Ed25519 output + settlement binding");
+ok("disabled when PAXIOM_PRIVATE_KEY_PEM is unset", createSellerReceiptSetup({ network: "eip155:8453", routes: {} }) === null);
+ok("priceToAtomicUsdc converts $0.01 -> 10000 and $0.005 -> 5000", priceToAtomicUsdc("$0.01") === "10000" && priceToAtomicUsdc("$0.005") === "5000");
+
+const kp = generateReceiptKeyPair({ keyId: "seller_selftest_1" });
+// Escape newlines the way .env / Render env vars often store PEM strings.
+const escapedPem = kp.privateKeyPem.replace(/\n/g, "\\n");
+const setup = createSellerReceiptSetup({
+  privateKeyPem: escapedPem,
+  keyId: kp.keyId,
+  publicBaseUrl: "https://seller.example",
+  network: "eip155:8453",
+  routes: {
+    "GET /price": { accepts: [{ price: "$0.01" }] },
+    "GET /token/risk/:address": { accepts: [{ price: "$0.05" }] },
+  },
+});
+ok("setup initializes and derives matching Ed25519 public key", setup !== null && setup.publicKey === kp.publicKey);
+
+const testApp = express();
+testApp.use(setup!.middleware);
+testApp.get("/health", (_req, res) => res.json({ ok: true }));
+testApp.get("/demo/vet", (_req, res) => res.json({ verdict: "ok", demo: true }));
+
+// Simulate @x402/express paymentMiddleware exact lifecycle:
+//   - unpaid -> 402
+//   - paid -> buffer downstream res.end, set PAYMENT-RESPONSE header with settled txHash, then flush outer res.end
+const SETTLED_TX = "0x" + "ab".repeat(32);
+testApp.use((req, res, next) => {
+  if (!req.path.startsWith("/price") && !req.path.startsWith("/token/risk/")) return next();
+  if (!req.get("payment-signature")) {
+    return void res.status(402).json({ x402Version: 2, error: "payment_required" });
+  }
+  const origEnd = res.end.bind(res);
+  let buffered: any[] | null = null;
+  (res as any).end = (...args: any[]) => {
+    buffered = args;
+    return res;
+  };
+  next();
+  if (buffered) {
+    res.end = origEnd;
+    if (res.statusCode < 400) {
+      const settlePayload = Buffer.from(JSON.stringify({ success: true, transaction: SETTLED_TX }), "utf8").toString("base64");
+      res.setHeader("PAYMENT-RESPONSE", settlePayload);
+    }
+    (origEnd as any)(...buffered);
+  }
+});
+testApp.get("/price", (req, res) => {
+  if (req.query.bad === "1") return void res.status(400).json({ error: "bad_request" });
+  res.json({ symbol: "BTC", usd: 98500, source: "x402-seller" });
+});
+testApp.get("/token/risk/:address", (req, res) => {
+  res.json({ address: req.params.address, risk: 0.12 });
+});
+
+const srv = await new Promise<ReturnType<typeof testApp.listen>>((resolve) => {
+  const s = testApp.listen(0, "127.0.0.1", () => resolve(s));
+});
+const baseUrl = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+
+try {
+  // 1. Free non-demo route is untouched (no X-Paxiom-Receipt)
+  const freeRes = await fetch(`${baseUrl}/health`, { headers: { Connection: "close" } });
+  ok("free /health route omits X-Paxiom-Receipt", freeRes.status === 200 && freeRes.headers.get("x-paxiom-receipt") === null);
+
+  // 2. Unpaid 402 challenge omits X-Paxiom-Receipt
+  const unpaidRes = await fetch(`${baseUrl}/price?symbol=BTC`, { headers: { Connection: "close" } });
+  ok("402 challenge omits X-Paxiom-Receipt", unpaidRes.status === 402 && unpaidRes.headers.get("x-paxiom-receipt") === null);
+
+  // 3. Paid 400 validation failure omits X-Paxiom-Receipt
+  const badRes = await fetch(`${baseUrl}/price?bad=1`, { headers: { "PAYMENT-SIGNATURE": "sig_test", Connection: "close" } });
+  ok("400 validation failure omits X-Paxiom-Receipt", badRes.status === 400 && badRes.headers.get("x-paxiom-receipt") === null);
+
+  // 4. Paid 200 settled response emits X-Paxiom-Receipt binding output + settled txHash + route price
+  const paidRes = await fetch(`${baseUrl}/token/risk/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913`, {
+    headers: { "PAYMENT-SIGNATURE": "sig_settled_1", Connection: "close" },
+  });
+  const paidJson = await paidRes.json();
+  const paidHdr = paidRes.headers.get("x-paxiom-receipt");
+  const exposeHdr = paidRes.headers.get("access-control-expose-headers") || "";
+  ok("settled paid 200 emits X-Paxiom-Receipt + CORS expose header", paidHdr !== null && exposeHdr.toLowerCase().includes("x-paxiom-receipt"));
+  const decoded = decodeReceiptHeader(paidHdr!);
+  const verified = verifyReceipt(decoded, { output: paidJson });
+  ok(
+    "settled receipt binds Ed25519 signature, output hash, $0.05 parameterized price, and facilitator txHash",
+    verified.checks.signature === "pass" &&
+      verified.checks.outputHash === "pass" &&
+      verified.trustState === "settlement_claimed_not_checked" &&
+      decoded.payload.payment.amountAtomic === "50000" &&
+      decoded.payload.payment.network === "eip155:8453" &&
+      decoded.payload.payment.settlement.transactionHash === SETTLED_TX,
+  );
+
+  // 5. Tampering with delivered JSON body triggers output_hash_mismatch
+  const tampered = verifyReceipt(decoded, { output: { ...paidJson, risk: 0.99 } });
+  ok("tampered body fails with output_hash_mismatch", tampered.valid === false && tampered.trustState === "output_hash_mismatch");
+
+  // 6. Free /demo/vet emits a fully offline-verified receipt so evaluators can test verification free
+  const demoRes = await fetch(`${baseUrl}/demo/vet`, { headers: { Connection: "close" } });
+  const demoJson = await demoRes.json();
+  const demoHdr = demoRes.headers.get("x-paxiom-receipt");
+  const demoVerdict = verifyReceipt(decodeReceiptHeader(demoHdr!), { output: demoJson });
+  ok("free /demo/vet emits offline-verified receipt (amountAtomic=0)", demoVerdict.valid === true && demoVerdict.trustState === "verified");
+} finally {
+  srv.closeAllConnections?.();
+  await new Promise<void>((resolve) => srv.close(() => resolve()));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+if (fail) process.exit(1);
