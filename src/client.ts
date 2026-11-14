@@ -12,6 +12,7 @@
 import "dotenv/config";
 import { wrapFetchWithPaymentFromConfig, decodePaymentResponseHeader } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm";
+import { decodeReceiptHeader, verifyReceipt } from "@paxiom/receipts";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
@@ -51,7 +52,17 @@ try {
       /* header present but not decodable — ignore */
     }
   }
-  console.log("  Data:", JSON.stringify(await res.json(), null, 2));
+  const data = await res.json();
+  const receiptHdr = res.headers.get("x-paxiom-receipt");
+  if (receiptHdr) {
+    try {
+      const verdict = verifyReceipt(decodeReceiptHeader(receiptHdr), { output: data });
+      console.log("  Receipt:   ", JSON.stringify({ trustState: verdict.trustState, checks: verdict.checks, receiptHash: verdict.receiptHash }));
+    } catch {
+      /* header present but not decodable — ignore */
+    }
+  }
+  console.log("  Data:", JSON.stringify(data, null, 2));
   console.log("\n  Paid, delivered. The USDC just moved to your seller wallet.\n");
 } catch (err: any) {
   console.error("\n  Payment/request failed:", err?.message ?? err);

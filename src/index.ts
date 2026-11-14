@@ -53,6 +53,7 @@ import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } f
 import { getUpstreamHealth, summarize } from "./upstream.js";
 import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "./calibration.js";
 import { bazaarRouter } from "./bazaar.js";
+import { createSellerReceiptSetup } from "./receipts.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -198,6 +199,16 @@ for (const ep of ENDPOINTS) {
 // 200 (a real buy) apart from a free-route 200.
 const PAID_PATHS = new Set(Object.keys(routes).map((k) => k.split(" ")[1]));
 
+// Optional Ed25519 delivery receipts (`X-Paxiom-Receipt`, paxiom.receipt.v0).
+// Inert unless PAXIOM_PRIVATE_KEY_PEM is configured.
+const receiptSetup = createSellerReceiptSetup({
+  privateKeyPem: process.env.PAXIOM_PRIVATE_KEY_PEM,
+  keyId: process.env.PAXIOM_KEY_ID,
+  publicBaseUrl: process.env.PUBLIC_BASE_URL,
+  network: NETWORK,
+  routes,
+});
+
 // ─── App ─────────────────────────────────────────────────────────────────
 const app = express();
 app.disable("x-powered-by");
@@ -255,6 +266,12 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// Mounted before both /demo/* and paymentMiddleware so settled 200 JSON responses
+// sign the final body + facilitator PAYMENT-RESPONSE tx hash on flush.
+if (receiptSetup) {
+  app.use(receiptSetup.middleware);
+}
 
 // Minimal per-IP rate limiter (60 req/min) for the FREE storefront only, so
 // nobody can hammer it. Plain Map, fixed 60s window, no deps. Paid routes are
@@ -593,6 +610,11 @@ app.delete("/grants/mcp", grantsMcpMethodNotAllowed);
 
 // Bot-discovery manifests (free): /.well-known/x402.json + /.well-known/agent.json
 app.use(discoveryRouter);
+if (receiptSetup) {
+  app.get("/.well-known/paxiom-keys.json", freeRateLimit, (_req, res) => {
+    res.json(receiptSetup.keyDocument);
+  });
+}
 
 // Request validation lives AFTER the paywall now -- see validateParams below, registered between
 // the payment middleware and the paid handlers. It used to run here, in front of the paywall, with
@@ -824,7 +846,7 @@ setServedPaths([
   ...Object.keys(routes).map((k) => k.split(" ")[1]),
   "/health", "/catalog", "/stats", "/funnel", "/wanted", "/dashboard", "/track-record",
   "/accuracy", "/demand", "/llms.txt", "/.well-known/x402.json", "/.well-known/agent.json",
-  "/.well-known/x402", "/.well-known/agent", "/mcp", "/grants/mcp", "/company", "/truth", "/favicon.ico",
+  "/.well-known/x402", "/.well-known/agent", "/.well-known/paxiom-keys.json", "/mcp", "/grants/mcp", "/company", "/truth", "/favicon.ico",
   "/model", "/calibration", "/signals", "/relaunches",
 ]);
 

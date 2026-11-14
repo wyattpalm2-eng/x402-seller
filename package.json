@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@paxiom/receipts": "^0.1.2",
     "@x402/core": "^2.19.0",
     "@x402/evm": "^2.19.0",
     "@x402/express": "^2.19.0",
