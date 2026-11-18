@@ -555,3 +555,4 @@
 {"id": "brief:BTC:2026-11-17T00", "t": 1794877122239, "kind": "brief", "symbol": "BTC", "slot": "2026-11-17T00", "verdict": "neutral", "price0": 64593.765, "graded": false}
 {"id": "brief:BTC:2026-11-17T12", "t": 1794943109615, "kind": "brief", "symbol": "BTC", "slot": "2026-11-17T12", "verdict": "neutral", "price0": 63781.275, "graded": false}
 {"id": "brief:BTC:2026-11-18T00", "t": 1794960187815, "kind": "brief", "symbol": "BTC", "slot": "2026-11-18T00", "verdict": "neutral", "price0": 64779.865, "graded": false}
+{"id": "brief:BTC:2026-11-18T12", "t": 1795027195979, "kind": "brief", "symbol": "BTC", "slot": "2026-11-18T12", "verdict": "neutral", "price0": 63155.855, "graded": false}
