@@ -34,6 +34,7 @@ import { Router, type Request, type Response } from "express";
 import { cryptoPrice, stockQuote, topMarkets, cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { recordSale, priceToUsd } from "./stats.js";
+import { signalHistory } from "./truth-signal.js";
 
 // Price per call — kept here so the integrator sees one source of truth.
 export const PREMIUM_PRICE = process.env.PRICE_SIGNAL || "$0.01";
@@ -269,6 +270,9 @@ premiumRouter.get("/signal", async (req: Request, res: Response) => {
         range_component: rangeComponent, // position in 24h range, or null
         weights: rangeComponent === null ? { change: 1 } : { change: 0.7, range: 0.3 },
       },
+      // Our own graded record for this verdict. Read it: so far these 24h momentum calls have
+      // mean-reverted more often than they have continued.
+      track_record: signalHistory(verdictFor(momentum)),
       source: "x402-seller",
       as_of: new Date().toISOString(),
     });

@@ -168,6 +168,35 @@ export function truthSignalRaw(): Row[] {
   return rows.slice();
 }
 
+/**
+ * What actually happened after past /signal calls with this verdict, from the graded ledger.
+ * Attached to every paid /signal and /watchlist answer so a buyer prices the verdict on its
+ * record, not on our say-so. As of 2026-11-23 that record says the 24h momentum calls have
+ * tended to MEAN-REVERT (bullish calls were followed by a fall more often than a rise, and the
+ * reverse); this function reports whatever the ledger says, including when that changes.
+ * Rows before 2026-11-23 were scored without the 24h range term (CoinGecko gave none).
+ */
+export function signalHistory(verdict: string) {
+  const g = rows.filter((r) => r.kind === "signal" && r.graded && typeof r.change_pct === "number");
+  const stats = (xs: Row[]) => {
+    const n = xs.length;
+    if (!n) return null;
+    const pct = (k: number) => Math.round((100 * k) / n);
+    const up = xs.filter((r) => (r.change_pct as number) > 0.25).length;
+    const down = xs.filter((r) => (r.change_pct as number) < -0.25).length;
+    const mean = xs.reduce((a, r) => a + (r.change_pct as number), 0) / n;
+    return { n, rose_pct: pct(up), fell_pct: pct(down), flat_pct: pct(n - up - down), mean_change_24h_pct: Number(mean.toFixed(2)) };
+  };
+  const same = stats(g.filter((r) => r.verdict === verdict));
+  return {
+    after_this_verdict: same, // the next 24h after past calls that said the same thing
+    after_any_call: stats(g), // base rate, for comparison
+    graded_on: "BTC and ETH, twice daily, 24h later vs Coinbase spot; ±0.25% counts as a move",
+    ledger: "/truth/signal",
+    caveat: same && same.n < 100 ? "small sample: read as a tendency, not a law" : null,
+  };
+}
+
 export function truthSignalSummary() {
   const graded = rows.filter((r) => r.graded && typeof r.hit === "boolean");
   const hits = graded.filter((r) => r.hit).length;

@@ -17,6 +17,7 @@ import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
 import { getReceiveAddress } from "./wallet.js";
 import { signalVerdict } from "./premium.js";
+import { signalHistory } from "./truth-signal.js";
 import { marketBrief } from "./composites.js";
 import { topMarkets, fearGreed } from "./data.js";
 
@@ -58,6 +59,8 @@ export async function signalsBatch(syms: string[]) {
     tally,
     signals: ok,
     errors,
+    // What followed past calls of each verdict (graded ledger, /truth/signal).
+    track_record: { bullish: signalHistory("bullish"), bearish: signalHistory("bearish"), neutral: signalHistory("neutral") },
     method: "Same compute as /signal: 24h change and intraday range folded into a momentum score in [-1, 1], bucketed bullish / bearish / neutral. Graded in public at /truth/signal.",
     as_of: new Date().toISOString(),
   };
