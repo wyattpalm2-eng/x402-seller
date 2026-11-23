@@ -55,7 +55,7 @@ function demoAllowedFor(tool: string): boolean {
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: typeof data === "string" ? data : JSON.stringify(data) }] });
 
 function buildServer(): McpServer {
-  const server = new McpServer({ name: "x402-seller", version: "1.1.0" });
+  const server = new McpServer({ name: "x402-seller", version: "1.2.0" });
 
   server.tool(
     "vet_token",
@@ -123,6 +123,30 @@ function buildServer(): McpServer {
   );
 
   server.tool(
+    "market_pulse",
+    "The whole crypto market in one answer: overall risk_on / risk_off regime from BTC, ETH and SOL (price move, perp funding, sentiment), market breadth across liquid coins, top gainers and losers, and fear/greed, each with reasons. The call to make before any trade. FREE demo (shared daily budget); unlimited via the paid HTTP API (/pulse, $0.02).",
+    {},
+    async () => {
+      if (!demoAllowedFor("market_pulse")) return overBudget();
+      const { marketPulse } = await import("./batch.js");
+      const data = await marketPulse().catch(() => null);
+      return data == null ? ok({ error: "upstream_unavailable", detail: "market sources are busy; try again shortly" }) : ok(data);
+    },
+  );
+
+  server.tool(
+    "top_movers",
+    "Biggest 24h gainers and losers among actively traded coins (at least $2M of 24h volume, so no thin-pair 'pumps'), plus breadth and the most-traded coins. Each mover shows where it sits in its day range. FREE demo (shared daily budget); unlimited via the paid HTTP API (/movers, $0.01).",
+    { limit: z.number().int().min(1).max(10).default(5) },
+    async ({ limit }) => {
+      if (!demoAllowedFor("top_movers")) return overBudget();
+      const { marketMovers } = await import("./batch.js");
+      const data = await marketMovers(Number(limit)).catch(() => null);
+      return data == null ? ok({ error: "upstream_unavailable", detail: "market source is busy; try again shortly" }) : ok(data);
+    },
+  );
+
+  server.tool(
     "truth",
     "FREE, always: the Truth Engine — every endpoint this service sells grades itself against reality in public (rug verdicts vs actual rugs, weather forecasts vs the ERA5 archive, market calls vs realized spot). Returns the doctrine + all three live ledgers' summaries. Judge us by receipts, not claims.",
     {},
@@ -169,7 +193,7 @@ function buildServer(): McpServer {
         },
         model: `${BASE_URL}/model`,
         discovery: { catalog: `${BASE_URL}/catalog`, llms: `${BASE_URL}/llms.txt`, openapi: `${BASE_URL}/openapi.json`, track_record: `${BASE_URL}/track-record` },
-        note: "This remote MCP server offers a free daily demo of vet_token / launch_radar / rug_check. For unlimited use, call the paid HTTP API with an x402 client.",
+        note: "This remote MCP server offers a free daily demo of vet_token / launch_radar / rug_check / market_pulse / top_movers. For unlimited use, call the paid HTTP API with an x402 client.",
       }),
   );
 
