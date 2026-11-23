@@ -101,19 +101,43 @@ export function recordSale(route: string, priceUsd: number, symbol?: string): vo
 type Settlement = { settled: number; failed: number; pending: number; lastTx?: string; lastError?: string; lastAt?: string };
 const settlement: Settlement = { settled: 0, failed: 0, pending: 0 };
 const RECEIPTS = path.join(__dirname, "..", "settlements.jsonl");
+// The local file above dies with every Render restart. This committed copy is refreshed every 6h
+// by .github/workflows/truth-snapshot.yml from GET /sales/receipts/raw, so which routes actually
+// get paid for survives restarts (until 2026-11-23 it did not, and nobody could say what sold).
+const RECEIPTS_DURABLE = path.join(__dirname, "..", "data", "settlement_receipts.jsonl");
 
-/** Same amnesia problem, same cure: replay the receipt ledger so settlement survives a restart. */
+export type Receipt = { id: string; t: number; route: string; success: boolean | null; txHash?: string; error?: string; at: string };
+const receipts = new Map<string, Receipt>();
+const receiptId = (r: { txHash?: string; at?: string; route?: string }) => r.txHash || `${r.at}|${r.route}`;
+function cleanError(e: unknown): string | undefined {
+  if (e == null) return undefined;
+  return String(e).replace(/https?:\/\/\S+/g, "<url>").slice(0, 120);
+}
+function addReceipt(r: any): boolean {
+  if (!r || !r.route || !r.at) return false;
+  const id = r.id || receiptId(r);
+  if (receipts.has(id)) return false;
+  receipts.set(id, { id, t: Date.parse(r.at) || 0, route: String(r.route), success: r.success ?? null, txHash: r.txHash, error: cleanError(r.error), at: String(r.at) });
+  return true;
+}
+export function receiptsRaw(): Receipt[] {
+  return [...receipts.values()].sort((a, b) => a.t - b.t);
+}
+
+/** Same amnesia problem, same cure: replay the receipt ledgers so settlement survives a restart. */
 function rehydrateSettlements(): void {
   try {
-    if (!fs.existsSync(RECEIPTS)) return;
-    for (const line of fs.readFileSync(RECEIPTS, "utf8").split("\n").filter(Boolean)) {
-      try {
-        const r = JSON.parse(line);
-        if (r.success === true) { settlement.settled += 1; if (r.txHash) settlement.lastTx = r.txHash; }
-        else if (r.success === false) { settlement.failed += 1; if (r.error) settlement.lastError = r.error; }
-        else { settlement.pending += 1; if (r.error) settlement.lastError = r.error; }
-        if (r.at) settlement.lastAt = String(r.at);
-      } catch { /* skip a corrupt receipt, keep the rest */ }
+    for (const file of [RECEIPTS_DURABLE, RECEIPTS]) {
+      if (!fs.existsSync(file)) continue;
+      for (const line of fs.readFileSync(file, "utf8").split("\n").filter(Boolean)) {
+        try { addReceipt(JSON.parse(line)); } catch { /* skip a corrupt receipt, keep the rest */ }
+      }
+    }
+    for (const r of receiptsRaw()) {
+      if (r.success === true) { settlement.settled += 1; if (r.txHash) settlement.lastTx = r.txHash; }
+      else if (r.success === false) { settlement.failed += 1; if (r.error) settlement.lastError = r.error; }
+      else { settlement.pending += 1; if (r.error) settlement.lastError = r.error; }
+      settlement.lastAt = r.at;
     }
     const seen = settlement.settled + settlement.failed + settlement.pending;
     if (seen > 0) console.log(`  receipts rehydrated: ${settlement.settled} settled / ${settlement.failed} failed / ${settlement.pending} unsettled`);
@@ -144,11 +168,10 @@ export function recordSettlement(route: string, success: boolean | undefined, tx
   else { settlement.pending += 1; settlement.lastError = error || "no payment-response header returned"; }
   settlement.lastAt = new Date().toISOString();
 
+  const row = { route, success: success ?? null, txHash, error: cleanError(error), at: settlement.lastAt };
+  addReceipt(row);
   try {
-    fs.appendFileSync(
-      RECEIPTS,
-      JSON.stringify({ route, success: success ?? null, txHash, error, at: settlement.lastAt }) + "\n",
-    );
+    fs.appendFileSync(RECEIPTS, JSON.stringify(row) + "\n");
   } catch { /* best-effort: never throw into the request path */ }
 
   const tag = success === true ? `SETTLED tx=${txHash}` : success === false ? `SETTLE-FAILED ${error}` : `NOT-SETTLED ${error ?? ""}`;

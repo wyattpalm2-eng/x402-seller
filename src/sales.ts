@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { receiptsRaw } from "./stats.js";
 
 type Sale = { at: string; tx: string; block: number; payer: string; usdc: number };
 
@@ -43,9 +44,24 @@ export function salesSummary() {
   };
 }
 
+/** Which routes were paid for, from the facilitator's settle receipts (recorded since 2026-11-23). */
+export function salesByRoute() {
+  const by: Record<string, { settled: number; failed: number; last_tx: string | null; last_at: string | null }> = {};
+  for (const r of receiptsRaw()) {
+    const b = (by[r.route] ??= { settled: 0, failed: 0, last_tx: null, last_at: null });
+    if (r.success === true) { b.settled++; b.last_tx = r.txHash ? `https://basescan.org/tx/${r.txHash}` : null; b.last_at = r.at; }
+    else if (r.success === false) b.failed++;
+  }
+  return {
+    note: "Per-route counts from settle receipts, kept since 2026-11-23. The 25 earlier payments above are on-chain but were never linked to a route, because the server's log did not survive restarts.",
+    routes: Object.entries(by).sort((a, b) => b[1].settled - a[1].settled).map(([route, v]) => ({ route, ...v })),
+  };
+}
+
 export function salesLedger() {
   return {
     ...salesSummary(),
+    by_route: salesByRoute(),
     note:
       "Every row is an inbound USDC transfer on Base to our payTo address. None of the payers are wallets we control. " +
       "Check any row on Basescan; do not take our word for it.",

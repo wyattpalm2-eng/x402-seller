@@ -49,7 +49,7 @@ import { handleMcp, mcpMethodNotAllowed } from "./mcphttp.js";
 import { handleGrantsMcp, grantsMcpMethodNotAllowed } from "./grantsmcp.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { discoveryRouter, ENDPOINTS } from "./discovery.js";
-import { recordSale, priceToUsd, stats, recordSettlement } from "./stats.js";
+import { recordSale, priceToUsd, stats, recordSettlement, receiptsRaw } from "./stats.js";
 import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } from "./funnel.js";
 import { getUpstreamHealth, summarize } from "./upstream.js";
 import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "./calibration.js";
@@ -366,6 +366,8 @@ app.get("/catalog", freeRateLimit, (_req, res) =>
 app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
 // Verified on-chain sales ledger. Survives restarts (committed file), unlike /stats.
 app.get("/sales", freeRateLimit, (_req, res) => res.json(salesLedger()));
+// Raw settle receipts for the truth-snapshot workflow (route, tx hash, time; no buyer data).
+app.get("/sales/receipts/raw", freeRateLimit, (_req, res) => res.json({ rows: receiptsRaw() }));
 // THE WANT LIST: routes real external clients asked for and we do not have. Observed demand.
 app.get("/wanted", freeRateLimit, (_req, res) => res.json(wantList()));
 // Demand funnel: who looked (402) vs who bought. Optionally private: set
