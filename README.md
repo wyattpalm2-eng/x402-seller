@@ -30,36 +30,65 @@ curl "https://x402-seller-m8nx.onrender.com/track-record"
 curl "https://x402-seller-m8nx.onrender.com/examples"
 ```
 
-## Buy with three lines (any x402 client)
+## Buy in a few lines (any x402 client)
 
 ```ts
-import { wrapFetchWithPayment } from "@x402/fetch";
+import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm";
 import { privateKeyToAccount } from "viem/accounts";
 
-const payFetch = wrapFetchWithPayment(fetch, privateKeyToAccount(process.env.PK));
+const payFetch = wrapFetchWithPaymentFromConfig(fetch, {
+  schemes: [{ network: "eip155:8453", client: new ExactEvmScheme(privateKeyToAccount(process.env.PK)) }],
+});
 const r = await payFetch("https://x402-seller-m8nx.onrender.com/vet?chain=base&address=0x…");
 // 402 → auto-pay USDC on Base → data. That's the whole integration.
 ```
 
 ## Endpoints
 
+<!-- pricing:start -->
+Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog) by `scripts/readme-pricing.mts` (30 paid routes). The 402 challenge is the price of record; this table is a copy of it.
+
 | Route | Price | What you get |
 |---|---|---|
-| `GET /alpha/launches?chain=` | $0.08 | **Launch radar** — discovers what just launched AND rug-screens every candidate in one call, ranked safest-first with a per-token verdict. Replaces the whole discover→screen→rank pipeline. EVM + Solana |
-| `GET /vet?chain=&address=` | $0.05 | **Single-token go/no-go**: market + composite rug score + liquidity-drain trend → `clear/caution/avoid` + reasons. EVM + Solana |
-| `GET /onchain/safety?chain=&address=` | $0.03 | Composite rug score: red/green flags, 0-100 risk, live-sim results, `needs_review` disagreement flag |
-| `GET /screen?chain=&addresses=a,b,c` | $0.03 | Batch-vet up to 8 tokens, sorted safest-first + summary |
-| `GET /onchain/liquidity?chain=&address=` | $0.01 | Liquidity-drain verdict from our self-collected reserve series: `draining_fast/draining/stable/growing` |
-| `GET /brief?symbol=BTC` | $0.03 | Market regime in one call: spot + funding/OI + sentiment → `risk_on/risk_off/neutral` |
-| `GET /derivs?symbol=BTC` | $0.01 | Perp funding (hourly + annualized), open interest, crowded-positioning signal |
-| `GET /onchain/token` `/trending` `/new` `/defi` | $0.005–0.01 | Token snapshots, trending pools, fresh launches, chain TVL |
-| `GET /price` `/stock` `/markets` `/signal` | $0.001–0.01 | Spot crypto, stocks/ETFs, market snapshot, momentum verdict |
+| `GET /onchain/safety?chain=base&address=0x…` | $0.05 | Composite rug score (EVM + Solana): static analysis + LIVE buy/sell simulation (EVM) / dual-engine authority+LP analysis (Solana) + serial-rugger check → ok/warning/danger with a disagreement flag |
+| `GET /screen?chain=base&addresses=0x..,0x..` | $0.05 | Batch safety screen up to 8 tokens: verdict + risk each, per-token verdicts (unordered), with a clear/caution/avoid summary |
+| `GET /vet?chain=base&address=0x…` | $0.05 | One-call token go/no-go: fuses market + composite rug score (static + live buy/sell simulation + serial-rugger) + our self-collected liquidity-drain trend → clear/caution/avoid with reasons. |
+| `GET /vet/deployer/:address?chain=base` | $0.05 | Deployer trust score (0-100) for a Base EVM address, computed from our own graded track_record.jsonl (token launch history, rug rate, relauncher flag). |
+| `GET /briefs?symbols=BTC,ETH,SOL` | $0.03 | Up to 10 market-regime reads (risk_on / risk_off / neutral from price move, perp funding and sentiment) in ONE paid call, plus an overall verdict for the basket. |
+| `GET /token/wash/:address?chain=base` | $0.03 | Is this token's trading volume real? |
+| `GET /watchlist?symbols=BTC,ETH,SOL` | $0.03 | Up to 20 momentum verdicts (bullish / bearish / neutral) in ONE paid call, with a tally. |
+| `GET /prices?symbols=BTC,ETH,SOL` | $0.02 | Up to 20 spot crypto prices in one call |
+| `GET /pulse` | $0.02 | The whole crypto market in one answer: overall risk_on / risk_off regime from BTC, ETH and SOL briefs, market breadth (% of top coins up), top 3 gainers and losers, and sentiment, each with reasons. |
+| `GET /alpha/launches?chain=base  (base\|eth\|solana\|bsc\|polygon\|arbitrum\|optimism)` | $0.01 | One call discovers what just launched AND rug-screens it, ranked by liquidity depth (deepest first), with a per-token rug verdict. |
+| `GET /brief?symbol=BTC` | $0.01 | Market regime in one call: risk_on/risk_off/neutral + reasons (spot, funding, OI, sentiment) |
+| `GET /derivs?symbol=BTC` | $0.01 | Perp funding rate + open interest + crowded-long/short squeeze signal |
+| `GET /etf/flows?symbols=IBIT,FBTC,ARKB&days=5` | $0.01 | Daily net flow estimates for US spot BTC/ETH ETFs -- aggregates 10+ Yahoo Finance OHLCV feeds and computes volume-weighted flow so a bot avoids 10+ calls and manual flow math. |
+| `GET /markets?limit=10` | $0.01 | Top crypto market snapshot |
+| `GET /movers?limit=5` | $0.01 | Biggest 24h gainers and losers among actively traded coins (Coinbase USD pairs with at least $2M of 24h volume, so no three-trade 'pumps'), plus market breadth and the most-traded coins. |
+| `GET /onchain/defi?chain=base` | $0.01 | Chain TVL + top protocols |
+| `GET /onchain/liquidity?chain=base&address=0x…` | $0.01 | Liquidity-drain detector from a self-collected reserve time-series (exists nowhere free): draining_fast/draining/stable/growing + %-change |
+| `GET /onchain/new?chain=base` | $0.01 | Newly launched pools — launch hunting |
+| `GET /onchain/token?query=PEPE  \|  ?chain=base&address=0x…` | $0.01 | Token snapshot: price, liquidity, volume, 24h change, FDV, best pool |
+| `GET /onchain/trending?chain=base` | $0.01 | Trending DEX pools |
+| `GET /price?symbol=BTC` | $0.01 | Spot crypto price in USD |
+| `GET /signal?symbol=BTC` | $0.01 | Composite market signal: spot + 24h change + momentum → bullish/bearish/neutral |
+| `GET /stock?ticker=AAPL` | $0.01 | Stock/ETF quote |
+| `GET /token/concentration/:address?chain=base` | $0.01 | Returns Gini coefficient, top-10% share, HHI, and Shannon entropy for a token's holder distribution, computed from real on-chain ERC-20 Transfer events fetched from a public Base/Ethereum RPC. |
+| `GET /token/risk/:address?chain=base` | $0.01 | Composite on-chain token risk score for any Base or Ethereum token: fuses holder concentration from Transfer-log sampling, Sourcify verification status, contract bytecode analysis, and DexScreener liquidity/volume into one 0-100 score. |
+| `GET /wallet/fingerprint/:address?chain=base` | $0.01 | Composite wallet fingerprint (0-100) for any Base or Ethereum address: aggregates native balance, tx count, contract bytecode, ERC-20 token holdings, and DeFi protocol exposure (DefiLlama). |
+| `GET /weather/consensus?lat=40.71&lon=-74.01` | $0.01 | Cross-source weather consensus + agreement score (keyless: Open-Meteo + NOAA + 7Timer). |
+| `GET /wx/ag/:lat/:lon` | $0.01 | Agricultural risk metrics from Open-Meteo: 13 hourly variables synthesized into a computed ag-risk score 0-100 with drought/excess-precip/high-wind/high-VPD/low-soil-moisture flags. |
+| `GET /wx/storm?lat=30.26&lon=-97.74` | $0.01 | Storm risk for any coordinate: resolves NOAA/NWS active-alert GeoJSON polygons with real point-in-polygon math, blends in wind and severity, and returns one scored risk verdict. |
+| `GET /yield/surface?chain=base` | $0.01 | Risk-adjusted yield surface across Base and Ethereum lending, DEX, and restaking pools -- pulls real pool data from yields.llama.fi, computes IL-risk-adjusted APY and cross-protocol TVL context, sorted by adjusted return. |
+<!-- pricing:end -->
 
 **Free:** `/` · `/demo/vet` · `/track-record` · `/examples` · `/catalog` · `/llms.txt` ·
 `/.well-known/x402.json` · `/.well-known/agent.json` · `/openapi.json` · `/health` · `/stats`
 
-Verdict-first flat JSON everywhere: read field 1, act. Reasons included for audit. Malformed
-requests are rejected **before** the paywall — your agent never pays for a doomed call.
+Verdict-first flat JSON everywhere: read field 1, act. Reasons included for audit. A malformed
+request still gets its 402 first (so crawlers can price every route), but a paid request that fails
+validation returns 400 and the payment is cancelled: your agent is never charged for a doomed call.
 
 ## Why pay when the underlying sources are free?
 
