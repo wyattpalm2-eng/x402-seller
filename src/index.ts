@@ -54,6 +54,7 @@ import { recordView, markBuyer, funnel, recordMiss, wantList, setServedPaths } f
 import { getUpstreamHealth, summarize } from "./upstream.js";
 import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "./calibration.js";
 import { bazaarRouter } from "./bazaar.js";
+import { salesSummary, salesLedger } from "./sales.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -338,6 +339,8 @@ app.get("/catalog", freeRateLimit, (_req, res) =>
     payTo: PAY_TO,
     network: NETWORK,
     facilitator: FACILITATOR_LABEL,
+    // Proof that real agents have paid here, each sale checkable on-chain at /sales.
+    verified_sales: { ...salesSummary(), ledger: "/sales" },
     // Free demos were advertised only on the human HTML page, so a machine reading
     // this catalog saw nothing but paid routes and had to spend to evaluate us.
     // Surfaced here (and in /llms.txt) so an agent can try before it buys.
@@ -352,6 +355,8 @@ app.get("/catalog", freeRateLimit, (_req, res) =>
   }),
 );
 app.get("/stats", freeRateLimit, (_req, res) => res.json(stats()));
+// Verified on-chain sales ledger. Survives restarts (committed file), unlike /stats.
+app.get("/sales", freeRateLimit, (_req, res) => res.json(salesLedger()));
 // THE WANT LIST: routes real external clients asked for and we do not have. Observed demand.
 app.get("/wanted", freeRateLimit, (_req, res) => res.json(wantList()));
 // Demand funnel: who looked (402) vs who bought. Optionally private: set
