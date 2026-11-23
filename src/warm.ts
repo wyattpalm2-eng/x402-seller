@@ -17,14 +17,23 @@ export const EXAMPLES: { chain: string; address: string }[] = [
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function warmOnce(): Promise<void> {
+/** Returns how many examples now have a reading. */
+async function warmOnce(): Promise<number> {
+  let ok = 0;
   for (const t of EXAMPLES) {
-    await tokenSnapshot(t.address, undefined, t.chain).catch(() => null);
+    if (await tokenSnapshot(t.address, undefined, t.chain).catch(() => null)) ok++;
     await sleep(3000); // spaced out: a burst is what triggers the 429s in the first place
   }
+  return ok;
+}
+
+// Retry every minute until all examples have a reading (a 429 spell after boot can outlast the
+// first attempt, as it did on 2026-11-23), then refresh every 10 minutes.
+async function loop(): Promise<void> {
+  const ok = await warmOnce().catch(() => 0);
+  setTimeout(() => void loop(), ok === EXAMPLES.length ? 10 * 60 * 1000 : 60 * 1000).unref?.();
 }
 
 export function startWarm(): void {
-  setTimeout(() => void warmOnce(), 15_000).unref?.();
-  setInterval(() => void warmOnce(), 10 * 60 * 1000).unref?.();
+  setTimeout(() => void loop(), 15_000).unref?.();
 }
