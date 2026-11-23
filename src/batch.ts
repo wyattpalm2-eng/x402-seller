@@ -119,6 +119,35 @@ export async function liquidUniverse(): Promise<Mover[]> {
   return out;
 }
 
+/**
+ * /markets fallback. CoinGecko ranks by market cap and is the primary source, but it rate-limits
+ * Render's IP and a restart wipes the last-good cache, so right after a restart /markets could
+ * answer nothing. This answers from Coinbase instead, ranked by 24h DOLLAR VOLUME, and says so in
+ * `ranked_by` and `source`, because volume rank is not market-cap rank.
+ */
+export async function coinbaseMarkets(limit = 10) {
+  const n = Math.min(Math.max(limit, 1), 50);
+  const u = await liquidUniverse();
+  if (u.length === 0) return null;
+  const top = [...u].sort((a, b) => b.volume_24h_usd - a.volume_24h_usd).slice(0, n);
+  return {
+    count: top.length,
+    coins: top.map((m, i) => ({
+      id: m.symbol.toLowerCase(),
+      symbol: m.symbol.toLowerCase(),
+      name: m.symbol,
+      price_usd: m.price_usd,
+      market_cap: null,
+      volume_24h_usd: m.volume_24h_usd,
+      rank: i + 1,
+      change_24h_pct: m.change_24h_pct,
+    })),
+    ranked_by: "24h dollar volume on Coinbase (market-cap source unavailable right now)",
+    source: "coinbase",
+    as_of: new Date().toISOString(),
+  };
+}
+
 export async function marketMovers(limit = 5) {
   const u = await liquidUniverse();
   if (u.length < 10) return null;

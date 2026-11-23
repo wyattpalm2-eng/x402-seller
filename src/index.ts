@@ -56,7 +56,7 @@ import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "
 import { bazaarRouter } from "./bazaar.js";
 import { salesSummary, salesLedger } from "./sales.js";
 import { washRouter, washRoutes, washCatalog, validateWash } from "./wash.js";
-import { batchRouter, batchRoutes, batchCatalog, validateBatch } from "./batch.js";
+import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -835,7 +835,10 @@ app.get("/stock", (req, res) => {
 });
 app.get("/markets", (req, res) => {
   const limit = Number(req.query.limit || 10);
-  return deliver(res, "GET /markets", priceToUsd(PRICES.markets), `top${limit}`, () => topMarkets(limit));
+  // Coinbase fallback (ranked by volume, labeled as such) when CoinGecko is rate-limiting a cold cache.
+  return deliver(res, "GET /markets", priceToUsd(PRICES.markets), `top${limit}`, () =>
+    topMarkets(limit).then((m) => ({ ...m, ranked_by: "market cap" })).catch(() => coinbaseMarkets(limit)),
+  );
 });
 
 async function deliver(
