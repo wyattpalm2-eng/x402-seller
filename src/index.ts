@@ -55,6 +55,7 @@ import { getUpstreamHealth, summarize } from "./upstream.js";
 import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "./calibration.js";
 import { bazaarRouter } from "./bazaar.js";
 import { salesSummary, salesLedger } from "./sales.js";
+import { washRouter, washRoutes, washCatalog, validateWash } from "./wash.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -117,6 +118,7 @@ const CATALOG = [
   ...stormRiskCatalog,
   ...walletFingerprintCatalog,
   ...tokenRiskCatalog,
+  ...washCatalog,
   ...deployerReputationCatalog,
 ];
 
@@ -167,6 +169,7 @@ const routes = {
   ...stormRiskRoutes,
   ...walletFingerprintRoutes,
   ...tokenRiskRoutes,
+  ...washRoutes,
   ...deployerReputationRoutes,
 };
 
@@ -775,6 +778,7 @@ app.use((req, res, next) => {
   else if (req.path === "/yield/surface") err = validateYieldSurface(q, req.path);
   else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
   else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
+  else if (req.path.startsWith("/token/wash/")) err = validateWash(q, req.path);
   else if (req.path.startsWith("/vet/deployer/")) err = validateDeployerReputation(q, req.path);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
@@ -797,6 +801,7 @@ app.use(wxAgRouter);
 app.use(stormRiskRouter);
 app.use(walletFingerprintRouter);
 app.use(tokenRiskRouter);
+app.use(washRouter);
 app.use(deployerReputationRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
