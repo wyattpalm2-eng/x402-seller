@@ -28,6 +28,7 @@ import { getReceiveAddress } from "./wallet.js";
 import { priceToUsd } from "./stats.js";
 import { empiricalRisk } from "./calibration.js";
 import { rawRows } from "./record.js";
+import { washReport } from "./wash.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 // PRICING (revised 2026-08-11). Flat $0.01 across 23 endpoints priced the one thing nobody else
@@ -55,11 +56,24 @@ export function validateBrief(q: Record<string, any>): string | null {
 }
 
 // ─── /vet — one-call token due diligence ────────────────────────────────────
+const WASH_BUDGET_MS = Number(process.env.VET_WASH_BUDGET_MS || 6000);
 export async function vetToken(chainKey: string, address: string) {
-  const [market, security] = await Promise.all([
+  // Who actually makes the volume (src/wash.ts). Base/Ethereum only, and capped at WASH_BUDGET_MS
+  // so a slow public RPC can never make the flagship route slow: past the cap /vet simply answers
+  // without it and says so.
+  const washChain = chainKey === "base" ? "base" : chainKey === "eth" || chainKey === "ethereum" ? "eth" : null;
+  const washP: Promise<any> = washChain
+    ? Promise.race([
+        washReport(washChain, address).catch(() => null),
+        new Promise((r) => setTimeout(() => r("timeout"), WASH_BUDGET_MS)),
+      ])
+    : Promise.resolve(null);
+  const [market, security, washRaw] = await Promise.all([
     tokenSnapshot(address, undefined, chainKey).catch(() => null),
     safetyReport(chainKey, address).catch(() => null),
+    washP,
   ]);
+  const wash = washRaw && washRaw !== "timeout" ? washRaw : null;
   if (!market && !security) return null;
 
   const why: string[] = [];
@@ -92,6 +106,12 @@ export async function vetToken(chainKey: string, address: string) {
     why.push("market: 24h volume >20x liquidity — churn/wash pattern");
   }
   if (!market) why.push("market: no DEX pair found");
+  if (wash?.verdict === "likely_wash") {
+    if (verdict === "clear") verdict = "caution";
+    why.push(`volume: likely fake — ${wash.reasons.join("; ")}`);
+  } else if (wash?.verdict === "suspicious") {
+    why.push(`volume: concentrated — ${wash.reasons.join("; ")}`);
+  }
 
   // Live liquidity trend (our self-collected series). A pool whose liquidity is
   // draining is a rug/exit in progress even when the contract looks clean —
@@ -145,6 +165,13 @@ export async function vetToken(chainKey: string, address: string) {
         }
       : null,
     liquidity_trend: liqTrend, // null until we've collected enough history
+    // Is the volume real? Full report at /token/wash/:address. null = unsupported chain or the
+    // check did not finish inside its time budget.
+    volume_authenticity: wash
+      ? { verdict: wash.verdict, wash_score: wash.wash_score ?? null, metrics: wash.metrics ?? null, window_hours: wash.window_hours, swaps_analyzed: wash.swaps_analyzed }
+      : washRaw === "timeout"
+        ? { verdict: "not_checked", reason: "on-chain swap read exceeded the time budget" }
+        : null,
     // WHAT ACTUALLY HAPPENED to the tokens we scored like this one. This is the part of the answer
     // that is not an opinion: it is measured from our own graded history, so it holds even while
     // the hand-tuned verdict above is miscalibrated — and it is the one thing a competitor cannot
