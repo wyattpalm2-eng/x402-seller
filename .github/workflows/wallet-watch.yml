@@ -1,7 +1,13 @@
 name: wallet-watch
-# Emails Wyatt (by opening a GitHub issue) the FIRST time real USDC lands in the
-# x402-seller wallet on Base. Fires once (drops a .paid marker). Also warms /health
-# each run. Free on this public repo. ~hourly is plenty for a first-sale alert.
+# Watches the x402-seller wallet on Base for incoming USDC, every 15 minutes.
+# For each new payment it (1) appends a row to data/settled_sales.jsonl, which the
+# public /sales page serves after the redeploy this commit triggers, and (2) opens a
+# GitHub issue so Wyatt gets an email. Also warms /health each run.
+#
+# Until 2026-11-23 this read Blockscout's API, which now answers automated requests
+# with a Cloudflare challenge page. jq parsed nothing, the count stayed 0, and the
+# job reported "0 payments" while 25 had arrived. It now reads the chain directly
+# over public JSON-RPC (eth_getLogs on the USDC contract), which has no such gate.
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -11,27 +17,103 @@ permissions:
   issues: write
 concurrency:
   group: wallet-watch
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   watch:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Check wallet for first USDC payment (and warm the API)
+      - name: Warm the API
+        run: curl -s -o /dev/null --max-time 25 "https://x402-seller-m8nx.onrender.com/health" || true
+      - name: Scan for new USDC payments
+        id: scan
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+
+          PAY_TO = "0x72B944dA66263bE35c2a2eDFeF5c525d58fa53Df"
+          USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+          TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+          RPCS = ["https://base-rpc.publicnode.com", "https://mainnet.base.org"]
+          LEDGER = "data/settled_sales.jsonl"
+          STEP = 20000  # blocks per getLogs call
+          WINDOW = 10800  # ~6h of Base blocks, rescanned every run; known txs are skipped, so overlap is free
+          # No saved cursor on purpose: committing one every 15 minutes would redeploy Render every
+          # 15 minutes. The job commits only when there is a real new payment.
+
+          def rpc(method, params):
+              last = None
+              for url in RPCS:
+                  for _ in range(3):
+                      try:
+                          req = urllib.request.Request(url, data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(),
+                                                       headers={"content-type": "application/json", "user-agent": "x402-seller-wallet-watch"})
+                          r = json.load(urllib.request.urlopen(req, timeout=30))
+                          if "error" in r: raise RuntimeError(r["error"])
+                          return r["result"]
+                      except Exception as e:
+                          last = e; time.sleep(2)
+              raise RuntimeError(f"{method} failed on every RPC: {last}")
+
+          head = int(rpc("eth_blockNumber", []), 16) - 6  # a few blocks back: the RPCs lag each other
+          start = head - WINDOW
+
+          known = set()
+          if os.path.exists(LEDGER):
+              for line in open(LEDGER):
+                  line = line.strip()
+                  if line:
+                      try: known.add(json.loads(line)["tx"].lower())
+                      except Exception: pass
+
+          topic_to = "0x" + "0" * 24 + PAY_TO[2:].lower()
+          new = []
+          b = start
+          while b <= head:
+              e = min(b + STEP - 1, head)
+              logs = rpc("eth_getLogs", [{"address": USDC, "fromBlock": hex(b), "toBlock": hex(e), "topics": [TRANSFER, None, topic_to]}])
+              for l in logs:
+                  tx = l["transactionHash"]
+                  if tx.lower() in known: continue
+                  blk = int(l["blockNumber"], 16)
+                  ts = int(rpc("eth_getBlockByNumber", [hex(blk), False])["timestamp"], 16)
+                  new.append({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts)), "tx": tx, "block": blk,
+                              "payer": "0x" + l["topics"][1][-40:], "usdc": int(l["data"], 16) / 1e6})
+                  known.add(tx.lower())
+              b = e + 1
+
+          if new:
+              with open(LEDGER, "a") as f:
+                  for r in sorted(new, key=lambda r: r["block"]):
+                      f.write(json.dumps(r) + "\n")
+          print(f"scanned blocks {start}..{head}: {len(new)} new payment(s)")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"count={len(new)}\n")
+              out.write("summary=" + "; ".join(f"${r['usdc']:.2f} from {r['payer'][:8]}… ({r['at']})" for r in new)[:900] + "\n")
+              out.write("txs=" + " ".join(r["tx"] for r in new)[:2000] + "\n")
+          PY
+      - name: Commit the ledger
+        run: |
+          git config user.name "wallet-watch"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/settled_sales.jsonl
+          if git diff --cached --quiet; then echo "no new payments"; exit 0; fi
+          git commit -m "sale: ${{ steps.scan.outputs.count }} new x402 payment(s)"
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
+      - name: Notify
+        if: steps.scan.outputs.count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
+          SUMMARY: ${{ steps.scan.outputs.summary }}
+          TXS: ${{ steps.scan.outputs.txs }}
         run: |
-          A=0x72B944dA66263bE35c2a2eDFeF5c525d58fa53Df
-          USDC=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-          curl -s -o /dev/null --max-time 25 "https://x402-seller-m8nx.onrender.com/health" || true
-          COUNT=$(curl -s --max-time 30 "https://base.blockscout.com/api/v2/addresses/$A/token-transfers?type=ERC-20&filter=to" | jq --arg u "$USDC" '[.items[]? | select(((.token.address // "") | ascii_downcase) == $u)] | length' 2>/dev/null || echo 0)
-          echo "real USDC payments received so far: ${COUNT:-0}"
-          if [ "${COUNT:-0}" -gt 0 ] && [ ! -f .paid ]; then
-            echo "FIRST PAYMENT DETECTED"
-            date -u > .paid
-            git config user.name "wallet-watch"
-            git config user.email "actions@users.noreply.github.com"
-            git add .paid && git commit -m "first x402 payment detected" && git push
-            gh issue create --title "First x402-seller payment landed" --body "@wyattpalm2-eng an AI agent just paid you in USDC on Base. Wallet: https://base.blockscout.com/address/$A — this is your first real x402 sale. 🎉" || true
-          fi
+          body="@wyattpalm2-eng an agent paid x402-seller: ${SUMMARY}
+
+          Transactions:"
+          for t in $TXS; do body="$body
+          - https://basescan.org/tx/$t"; done
+          body="$body
+
+          Added to the public ledger at https://x402-seller-m8nx.onrender.com/sales after the next deploy. Which route was bought: see by_route on that page."
+          gh issue create --title "New x402-seller sale: ${{ steps.scan.outputs.count }} payment(s)" --body "$body" || true
