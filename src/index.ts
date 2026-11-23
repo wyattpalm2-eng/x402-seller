@@ -58,6 +58,7 @@ import { salesSummary, salesLedger } from "./sales.js";
 import { washRouter, washRoutes, washCatalog, validateWash } from "./wash.js";
 import { labeled } from "./keywords.js";
 import { stableRouter, stableRoutes, stableCatalog, validateStable } from "./stable.js";
+import { startWarm } from "./warm.js";
 import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -933,6 +934,7 @@ app.listen(PORT, () => {
   startHistory(); // begin collecting the liquidity time-series (the /onchain/liquidity moat)
   startRecord(); // begin the self-graded track record (/track-record — the public receipts)
   startTruth(); // begin the truth engine (every endpoint grades itself — /truth/weather)
+  startWarm(); // keep the homepage example tokens cached (warm.ts)
   startTruthSignal(); // second enrollment: /signal + /brief grade their market calls (/truth/signal)
   startDemandHistory(); // snapshot /demand to a committed JSONL so the trend survives redeploys
 });

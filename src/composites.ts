@@ -74,8 +74,9 @@ export async function vetToken(chainKey: string, address: string) {
         new Promise((r) => setTimeout(() => r("timeout"), WASH_BUDGET_MS)),
       ])
     : Promise.resolve(null);
+  let marketFailed = false; // a fetch error (usually a 429) is not the same as "no pair exists"
   const [market, security, washRaw] = await Promise.all([
-    tokenSnapshot(address, undefined, chainKey).catch(() => null),
+    tokenSnapshot(address, undefined, chainKey).catch(() => { marketFailed = true; return null; }),
     safetyReport(chainKey, address).catch(() => null),
     washP,
   ]);
@@ -111,7 +112,7 @@ export async function vetToken(chainKey: string, address: string) {
     if (verdict === "clear") verdict = "caution";
     why.push("market: 24h volume >20x liquidity — churn/wash pattern");
   }
-  if (!market) why.push("market: no DEX pair found");
+  if (!market) why.push(marketFailed ? "market: data source busy (rate-limited), retry in a minute" : "market: no DEX pair found");
   if (wash?.verdict === "likely_wash") {
     if (verdict === "clear") verdict = "caution";
     why.push(`volume: likely fake — ${wash.reasons.join("; ")}`);
