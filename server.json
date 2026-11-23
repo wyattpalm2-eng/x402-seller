@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.wyattpalm2-eng/x402-seller",
-  "title": "x402-seller — rug protection & safe-alpha for trading agents",
-  "description": "Rug-check & launch radar for trading agents: composite honeypot score, EVM+Solana, keyless x402.",
-  "version": "1.0.0",
+  "title": "x402-seller \u2014 rug, honeypot & fake-volume checks for trading agents",
+  "description": "Rug, honeypot & fake-volume checks for trading agents. Graded publicly. EVM+Solana, keyless x402.",
+  "version": "1.1.0",
   "repository": {
     "url": "https://github.com/wyattpalm2-eng/x402-seller",
     "source": "github"

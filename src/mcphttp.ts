@@ -55,7 +55,7 @@ function demoAllowedFor(tool: string): boolean {
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: typeof data === "string" ? data : JSON.stringify(data) }] });
 
 function buildServer(): McpServer {
-  const server = new McpServer({ name: "x402-seller", version: "1.0.0" });
+  const server = new McpServer({ name: "x402-seller", version: "1.1.0" });
 
   server.tool(
     "vet_token",
