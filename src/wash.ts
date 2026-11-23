@@ -52,8 +52,9 @@ async function rpc(chain: Chain, method: string, params: unknown[]): Promise<any
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
         signal: AbortSignal.timeout(15_000),
       });
+      if (!r.ok) throw new Error(`${method} http ${r.status}`);
       const j: any = await r.json();
-      if (j.error) throw new Error(j.error.message || "rpc error");
+      if (j.error) throw new Error(`${method}: ${j.error.message || "rpc error"}`);
       return j.result;
     } catch (e) {
       last = e;

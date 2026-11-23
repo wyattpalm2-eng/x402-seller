@@ -66,7 +66,10 @@ export async function vetToken(chainKey: string, address: string) {
     ? Promise.race([
         washReport(washChain, address).then(
           (r) => r ?? { verdict: "not_checked", reason: "no readable DEX pool for this token" },
-          () => ({ verdict: "not_checked", reason: "on-chain swap read failed (upstream busy)" }),
+          (e) => ({
+            verdict: "not_checked",
+            reason: `on-chain swap read failed: ${String(e?.message ?? e).replace(/https?:\/\/\S+/g, "<url>").slice(0, 120)}`,
+          }),
         ),
         new Promise((r) => setTimeout(() => r("timeout"), WASH_BUDGET_MS)),
       ])
