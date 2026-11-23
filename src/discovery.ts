@@ -12,6 +12,7 @@
 import { Router, type Request, type Response } from "express";
 import { getReceiveAddress } from "./wallet.js";
 import { washDiscovery } from "./wash.js";
+import { labeled } from "./keywords.js";
 import { batchDiscovery } from "./batch.js";
 
 const NETWORK = process.env.NETWORK?.trim() || "eip155:84532";
@@ -663,3 +664,7 @@ discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {
   ];
   res.type("text/plain").send(lines.join("\n"));
 });
+
+// Put each route's plain-words label in front of its description (see keywords.ts). Runs once at
+// module load, before index.ts builds the 402 bazaar extensions or anything serves these files.
+for (const e of ENDPOINTS) e.description = labeled(e.path, e.description);

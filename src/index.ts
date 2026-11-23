@@ -56,6 +56,7 @@ import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "
 import { bazaarRouter } from "./bazaar.js";
 import { salesSummary, salesLedger } from "./sales.js";
 import { washRouter, washRoutes, washCatalog, validateWash } from "./wash.js";
+import { labeled } from "./keywords.js";
 import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -184,6 +185,10 @@ const routes = {
 // extension — the facilitator/settlement wiring below is untouched. This payload
 // is what probe-crawled catalogs (PayAI /discovery/resources, CDP Bazaar) ingest,
 // so listing there becomes a code artifact, not a manual submission.
+// Plain-words label in front of every paid route's 402 description (see keywords.ts).
+for (const [key, rc] of Object.entries(routes as Record<string, any>)) {
+  if (typeof rc?.description === "string") rc.description = labeled(key.split(" ")[1], rc.description);
+}
 for (const ep of ENDPOINTS) {
   const rc = (routes as Record<string, any>)[`GET ${ep.path}`];
   if (!rc) continue; // spec'd but not mounted (shouldn't happen; harmless if it does)
