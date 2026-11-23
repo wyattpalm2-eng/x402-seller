@@ -206,16 +206,43 @@ export async function fearGreed(): Promise<{ value: number | null; label: string
   });
 }
 
-/** Top crypto market snapshot from CoinGecko's free API. */
+async function paprikaMarkets(n: number, primaryErr: unknown): Promise<any> {
+  const arr = await getJson(`https://api.coinpaprika.com/v1/tickers?limit=${n}`);
+  // Empty/garbage upstream → throw so we don't bill for a zero-coin snapshot.
+  if (!Array.isArray(arr) || arr.length === 0) throw new Error(`no market data (coingecko: ${String(primaryErr)})`);
+  return {
+    count: Math.min(arr.length, n),
+    coins: arr.slice(0, n).map((c: any) => ({
+      id: c.id,
+      symbol: String(c.symbol ?? "").toLowerCase(),
+      name: c.name,
+      price_usd: c.quotes?.USD?.price,
+      market_cap: c.quotes?.USD?.market_cap,
+      rank: c.rank,
+      change_24h_pct: c.quotes?.USD?.percent_change_24h,
+    })),
+    source: "coinpaprika",
+    as_of: new Date().toISOString(),
+  };
+}
+
+/** Top crypto market snapshot from CoinGecko's free API, CoinPaprika when it is rate-limited. */
 export async function topMarkets(limit = 10): Promise<any> {
   const n = Math.min(Math.max(limit, 1), 50);
   return cached(`markets:${n}`, async () => {
   const url =
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd` +
     `&order=market_cap_desc&per_page=${n}&page=1&price_change_percentage=24h`;
-  const arr = await getJson(url);
-  // Empty/garbage upstream → throw so we don't bill for a zero-coin snapshot.
-  if (!Array.isArray(arr) || arr.length === 0) throw new Error("no market data");
+  let arr: any;
+  try {
+    arr = await getJson(url);
+    if (!Array.isArray(arr) || arr.length === 0) throw new Error("no market data");
+  } catch (err) {
+    // CoinGecko rate-limits Render's shared outbound IP, which made /markets (one of the routes
+    // agents actually buy) fail for paying callers. CoinPaprika ranks by market cap the same way
+    // and needs no key, so it is a like-for-like fallback rather than a different definition.
+    return paprikaMarkets(n, err);
+  }
   return {
     count: arr.length,
     coins: arr.map((c: any) => ({
