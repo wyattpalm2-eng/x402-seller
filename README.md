@@ -47,7 +47,7 @@ const r = await payFetch("https://x402-seller-m8nx.onrender.com/vet?chain=base&a
 ## Endpoints
 
 <!-- pricing:start -->
-Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog) by `scripts/readme-pricing.mts` (30 paid routes). The 402 challenge is the price of record; this table is a copy of it.
+Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog) by `scripts/readme-pricing.mts` (32 paid routes). The 402 challenge is the price of record; this table is a copy of it.
 
 | Route | Price | What you get |
 |---|---|---|
@@ -60,8 +60,10 @@ Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog
 | `GET /watchlist?symbols=BTC,ETH,SOL` | $0.03 | Up to 20 momentum verdicts (bullish / bearish / neutral) in ONE paid call, with a tally. |
 | `GET /prices?symbols=BTC,ETH,SOL` | $0.02 | Up to 20 spot crypto prices in one call |
 | `GET /pulse` | $0.02 | The whole crypto market in one answer: overall risk_on / risk_off regime from BTC, ETH and SOL briefs, market breadth (% of top coins up), top 3 gainers and losers, and sentiment, each with reasons. |
+| `GET /stablecoins/flows?limit=15` | $0.02 | Is stablecoin money moving onto or off each chain? |
 | `GET /alpha/launches?chain=base  (base\|eth\|solana\|bsc\|polygon\|arbitrum\|optimism)` | $0.01 | One call discovers what just launched AND rug-screens it, ranked by liquidity depth (deepest first), with a per-token rug verdict. |
 | `GET /brief?symbol=BTC` | $0.01 | Market regime in one call: risk_on/risk_off/neutral + reasons (spot, funding, OI, sentiment) |
+| `GET /depeg` | $0.01 | Is any major USD stablecoin off its $1 peg right now? |
 | `GET /derivs?symbol=BTC` | $0.01 | Perp funding rate + open interest + crowded-long/short squeeze signal |
 | `GET /etf/flows?symbols=IBIT,FBTC,ARKB&days=5` | $0.01 | Daily net flow estimates for US spot BTC/ETH ETFs -- aggregates 10+ Yahoo Finance OHLCV feeds and computes volume-weighted flow so a bot avoids 10+ calls and manual flow math. |
 | `GET /markets?limit=10` | $0.01 | Top crypto market snapshot |
