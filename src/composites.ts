@@ -64,7 +64,10 @@ export async function vetToken(chainKey: string, address: string) {
   const washChain = chainKey === "base" ? "base" : chainKey === "eth" || chainKey === "ethereum" ? "eth" : null;
   const washP: Promise<any> = washChain
     ? Promise.race([
-        washReport(washChain, address).catch(() => null),
+        washReport(washChain, address).then(
+          (r) => r ?? { verdict: "not_checked", reason: "no readable DEX pool for this token" },
+          () => ({ verdict: "not_checked", reason: "on-chain swap read failed (upstream busy)" }),
+        ),
         new Promise((r) => setTimeout(() => r("timeout"), WASH_BUDGET_MS)),
       ])
     : Promise.resolve(null);
@@ -73,7 +76,7 @@ export async function vetToken(chainKey: string, address: string) {
     safetyReport(chainKey, address).catch(() => null),
     washP,
   ]);
-  const wash = washRaw && washRaw !== "timeout" ? washRaw : null;
+  const wash = washRaw && washRaw !== "timeout" && washRaw.verdict !== "not_checked" ? washRaw : null;
   if (!market && !security) return null;
 
   const why: string[] = [];
@@ -171,7 +174,7 @@ export async function vetToken(chainKey: string, address: string) {
       ? { verdict: wash.verdict, wash_score: wash.wash_score ?? null, metrics: wash.metrics ?? null, window_hours: wash.window_hours, swaps_analyzed: wash.swaps_analyzed }
       : washRaw === "timeout"
         ? { verdict: "not_checked", reason: "on-chain swap read exceeded the time budget" }
-        : null,
+        : washRaw ?? null,
     // WHAT ACTUALLY HAPPENED to the tokens we scored like this one. This is the part of the answer
     // that is not an opinion: it is measured from our own graded history, so it holds even while
     // the hand-tuned verdict above is miscalibrated — and it is the one thing a competitor cannot

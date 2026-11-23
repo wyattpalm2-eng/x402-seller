@@ -21,7 +21,7 @@ import { Router, type Request, type Response } from "express";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
 import { getReceiveAddress } from "./wallet.js";
-import { getJson } from "./data.js";
+import { getJson, cached } from "./data.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 export const PRICE_TOKEN_WASH = process.env.PRICE_TOKEN_WASH || "$0.03";
@@ -82,7 +82,11 @@ const u = (hex: string) => BigInt(hex);
 const s256 = (hex: string) => BigInt.asIntN(256, BigInt(hex));
 
 async function findPool(chain: Chain, token: string) {
-  const j = await getJson(`https://api.dexscreener.com/latest/dex/tokens/${token}`);
+  // Same cache key as tokenSnapshot (crypto.ts), so inside /vet the two share ONE DexScreener
+  // request, and a 429 spell is answered from the last good reading instead of failing.
+  const j = await cached(`ds:tok:${token.toLowerCase()}`, () =>
+    getJson(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(token)}`),
+  );
   const pairs = (j?.pairs ?? []).filter(
     (p: any) => p.chainId === CHAINS[chain].dexChainId && /^0x[0-9a-fA-F]{40}$/.test(p.pairAddress ?? ""),
   );
