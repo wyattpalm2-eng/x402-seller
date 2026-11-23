@@ -1,6 +1,6 @@
 'use strict';
 
-const { web } = require('C:/Users/ClawBot/crew-builds/toolshed/web.js');
+const { web } = require('./lib/web.cjs');
 
 // Read track_record.jsonl into memory, keyed by lowercase address for fast lookup.
 // Fallback to local path because handlers are also run from x402-seller/.
