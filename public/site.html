@@ -392,7 +392,7 @@ const { verdict, survival, why } = await res.json();</span></pre>
   }).catch(() => {});
 
   fetch("/catalog").then((r) => r.json()).then((d) => {
-    const pick = ["GET /vet", "GET /token/wash/:address", "GET /alpha/launches", "GET /onchain/safety", "GET /prices", "GET /screen", "GET /brief", "GET /derivs"];
+    const pick = ["GET /vet", "GET /pulse", "GET /token/wash/:address", "GET /watchlist", "GET /alpha/launches", "GET /screen", "GET /brief", "GET /prices", "GET /derivs"];
     const rows = (d.endpoints || d.catalog || []).filter((e) => pick.includes(e.route)).sort((a, b) => pick.indexOf(a.route) - pick.indexOf(b.route));
     const cat = $("cat");
     rows.forEach((e) => {
