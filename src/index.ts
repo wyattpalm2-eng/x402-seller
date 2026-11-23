@@ -56,6 +56,7 @@ import { calibration, signalLift, relaunchStats, currentEraVerdictStats } from "
 import { bazaarRouter } from "./bazaar.js";
 import { salesSummary, salesLedger } from "./sales.js";
 import { washRouter, washRoutes, washCatalog, validateWash } from "./wash.js";
+import { batchRouter, batchRoutes, batchCatalog, validateBatch } from "./batch.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -119,6 +120,7 @@ const CATALOG = [
   ...walletFingerprintCatalog,
   ...tokenRiskCatalog,
   ...washCatalog,
+  ...batchCatalog,
   ...deployerReputationCatalog,
 ];
 
@@ -170,6 +172,7 @@ const routes = {
   ...walletFingerprintRoutes,
   ...tokenRiskRoutes,
   ...washRoutes,
+  ...batchRoutes,
   ...deployerReputationRoutes,
 };
 
@@ -790,6 +793,7 @@ app.use((req, res, next) => {
   else if (req.path.startsWith("/wallet/fingerprint/")) err = validateWalletFingerprint(q, req.path);
   else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
   else if (req.path.startsWith("/token/wash/")) err = validateWash(q, req.path);
+  else if (req.path === "/watchlist" || req.path === "/briefs" || req.path === "/pulse") err = validateBatch(q, req.path);
   else if (req.path.startsWith("/vet/deployer/")) err = validateDeployerReputation(q, req.path);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
@@ -813,6 +817,7 @@ app.use(stormRiskRouter);
 app.use(walletFingerprintRouter);
 app.use(tokenRiskRouter);
 app.use(washRouter);
+app.use(batchRouter);
 app.use(deployerReputationRouter);
 
 // Paid handlers. These only run AFTER payment has settled.

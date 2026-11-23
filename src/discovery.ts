@@ -12,6 +12,7 @@
 import { Router, type Request, type Response } from "express";
 import { getReceiveAddress } from "./wallet.js";
 import { washDiscovery } from "./wash.js";
+import { batchDiscovery } from "./batch.js";
 
 const NETWORK = process.env.NETWORK?.trim() || "eip155:84532";
 const FACILITATOR = process.env.FACILITATOR_URL?.trim() || "https://x402.org/facilitator";
@@ -138,6 +139,7 @@ export const ENDPOINTS: Endpoint[] = [
     },
   },
   washDiscovery,
+  ...batchDiscovery,
   {
     method: "GET", path: "/token/risk/{address}", price: P.tokenRisk,
     description: "ONE-CALL TOKEN RISK SCORE (0-100): fuses holder concentration from real Transfer logs, Sourcify verification, bytecode analysis, DexScreener liquidity/volume, and recent-recipient distribution into a single verdict (low/medium/high/critical). Replaces 5+ chained API calls -- RPC event scans, Sourcify fetch, bytecode download, DexScreener lookup, supply sampling -- plus the scoring logic to weigh them. Answers 'is this token safe to hold?' before an agent commits. Address validated pre-paywall (400, never a charge).",
