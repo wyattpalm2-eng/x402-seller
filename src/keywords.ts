@@ -30,6 +30,8 @@ export const LABELS: Record<string, string> = {
   "/prices": "Crypto prices API, many coins in one call.",
   "/markets": "Crypto market data: top coins with 24h change.",
   "/derivs": "Crypto funding rates and open interest.",
+  "/depeg": "Stablecoin depeg monitor.",
+  "/stablecoins/flows": "Stablecoin flows by chain: where money is moving.",
 };
 
 const norm = (p: string) => p.replace(/\{(\w+)\}/g, ":$1");

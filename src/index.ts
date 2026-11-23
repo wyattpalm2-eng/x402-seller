@@ -57,6 +57,7 @@ import { bazaarRouter } from "./bazaar.js";
 import { salesSummary, salesLedger } from "./sales.js";
 import { washRouter, washRoutes, washCatalog, validateWash } from "./wash.js";
 import { labeled } from "./keywords.js";
+import { stableRouter, stableRoutes, stableCatalog, validateStable } from "./stable.js";
 import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -122,6 +123,7 @@ const CATALOG = [
   ...tokenRiskCatalog,
   ...washCatalog,
   ...batchCatalog,
+  ...stableCatalog,
   ...deployerReputationCatalog,
 ];
 
@@ -174,6 +176,7 @@ const routes = {
   ...tokenRiskRoutes,
   ...washRoutes,
   ...batchRoutes,
+  ...stableRoutes,
   ...deployerReputationRoutes,
 };
 
@@ -801,6 +804,7 @@ app.use((req, res, next) => {
   else if (req.path.startsWith("/token/risk/")) err = validateTokenRisk(q, req.path);
   else if (req.path.startsWith("/token/wash/")) err = validateWash(q, req.path);
   else if (req.path === "/watchlist" || req.path === "/briefs" || req.path === "/pulse" || req.path === "/movers") err = validateBatch(q, req.path);
+  else if (req.path === "/depeg" || req.path === "/stablecoins/flows") err = validateStable(q, req.path);
   else if (req.path.startsWith("/vet/deployer/")) err = validateDeployerReputation(q, req.path);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
@@ -825,6 +829,7 @@ app.use(walletFingerprintRouter);
 app.use(tokenRiskRouter);
 app.use(washRouter);
 app.use(batchRouter);
+app.use(stableRouter);
 app.use(deployerReputationRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
