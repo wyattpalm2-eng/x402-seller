@@ -59,6 +59,7 @@ import { washRouter, washRoutes, washCatalog, validateWash } from "./wash.js";
 import { labeled } from "./keywords.js";
 import { stableRouter, stableRoutes, stableCatalog, validateStable } from "./stable.js";
 import { startWarm } from "./warm.js";
+import { dashAuthed, loginPage, dashAuthRouter } from "./dashauth.js";
 import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -382,9 +383,8 @@ app.get("/wanted", freeRateLimit, (_req, res) => res.json(wantList()));
 // Demand funnel: who looked (402) vs who bought. Optionally private: set
 // FUNNEL_KEY and pass ?key=… so visitor IPs aren't world-readable.
 app.get("/funnel", freeRateLimit, (req, res) => {
-  const key = process.env.FUNNEL_KEY?.trim();
-  if (key && String(req.query.key ?? "") !== key)
-    return void res.status(403).json({ error: "forbidden", detail: "pass ?key= to view the funnel" });
+  if (!dashAuthed(req))
+    return void res.status(403).json({ error: "forbidden", detail: "sign in at /dashboard, or pass ?key=" });
   return void res.json(funnel(stats().totalPaidCalls));
 });
 // Mission-control dashboard (human-facing): visitors, funnel, revenue, track
@@ -398,10 +398,9 @@ const DASHBOARD_HTML = (() => {
     return "<!doctype html><title>dashboard</title><p>dashboard.html not found</p>";
   }
 })();
+app.use(freeRateLimit, dashAuthRouter); // POST /dashboard/login, GET /dashboard/logout (dashauth.ts)
 app.get("/dashboard", freeRateLimit, (req, res) => {
-  const key = process.env.FUNNEL_KEY?.trim();
-  if (key && String(req.query.key ?? "") !== key)
-    return void res.status(403).type("html").send("<!doctype html><title>locked</title><body style='font:16px system-ui;max-width:40ch;margin:15vh auto;color:#333'><h3>Dashboard is private</h3><p>Append <code>?key=YOUR_KEY</code> to the URL.</p>");
+  if (!dashAuthed(req)) return void res.status(401).type("html").send(loginPage());
   // The page leads with figures that survive restarts (on-chain sales and balances, lifetime demand,
   // the graded ledgers) and keeps per-process counters in a labeled "since last restart" panel, so
   // the old injected banner explaining away zeros is no longer needed.
