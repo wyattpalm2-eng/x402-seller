@@ -45,6 +45,9 @@ type Snapshot = {
   mcp_tool_calls: number;
   /** Per-endpoint probe counts, aggregate only. */
   by_endpoint: Record<string, number>;
+  /** Per-tool MCP call counts. Only the total used to be kept, which hid which tools the
+   * remote MCP server's (by far its largest) usage actually goes to. Absent on older rows. */
+  mcp_by_tool?: Record<string, number>;
 };
 
 function snapshot(): Snapshot {
@@ -71,6 +74,7 @@ function snapshot(): Snapshot {
     demo_calls: sum(d.demo_calls),
     mcp_tool_calls: sum(d.mcp_tool_calls),
     by_endpoint: byEndpoint,
+    mcp_by_tool: { ...(d.mcp_tool_calls ?? {}) },
   };
 }
 
