@@ -158,6 +158,29 @@ export async function cryptoPrice(symbol: string): Promise<any> {
   });
 }
 
+/** Many spot prices in one paid call. Each symbol settles independently: a bad or delisted
+ * symbol comes back in `errors` instead of sinking the batch. Throws only if NOTHING priced,
+ * so the caller is never billed for an empty answer. */
+export const MAX_BATCH_SYMBOLS = 20;
+export function parseSymbolList(raw: string): string[] {
+  const list = String(raw || "")
+    .split(",")
+    .map((x) => x.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 12))
+    .filter(Boolean);
+  return [...new Set(list)];
+}
+export async function cryptoPrices(symbols: string[]): Promise<any> {
+  const settled = await Promise.allSettled(symbols.map((s) => cryptoPrice(s)));
+  const prices: any[] = [];
+  const errors: { symbol: string; error: string }[] = [];
+  settled.forEach((r, i) => {
+    if (r.status === "fulfilled") prices.push({ symbol: r.value.symbol, price_usd: r.value.price_usd });
+    else errors.push({ symbol: symbols[i], error: "no price (unknown or unlisted on Coinbase)" });
+  });
+  if (prices.length === 0) throw new Error("no symbol priced");
+  return { count: prices.length, prices, errors, source: "coinbase", as_of: new Date().toISOString() };
+}
+
 /** Stock/ETF quote from Yahoo Finance (free JSON, keyless). ticker like "AAPL". */
 export async function stockQuote(ticker: string): Promise<any> {
   const t = ticker.toUpperCase().replace(/[^A-Z0-9.\-]/g, "").slice(0, 12);

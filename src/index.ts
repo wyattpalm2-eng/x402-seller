@@ -17,7 +17,7 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { getReceiveAddress } from "./wallet.js";
-import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
+import { cryptoPrice, cryptoPrices, parseSymbolList, MAX_BATCH_SYMBOLS, stockQuote, topMarkets } from "./data.js";
 import { premiumRouter, premiumRoutes, premiumCatalog } from "./premium.js";
 import { cryptoRouter, cryptoRoutes, cryptoCatalog, validateOnchain } from "./crypto.js";
 import { safetyRouter, safetyRoutes, safetyCatalog, validateSafety } from "./safety.js";
@@ -93,10 +93,12 @@ const PRICES = {
   price: process.env.PRICE_CRYPTO || "$0.01",
   stock: process.env.PRICE_STOCK || "$0.01",
   markets: process.env.PRICE_MARKETS || "$0.01",
+  prices: process.env.PRICE_CRYPTO_BATCH || "$0.02",
 };
 
 const CATALOG = [
   { route: "GET /price",   price: PRICES.price,   params: "?symbol=BTC",   desc: "Spot crypto price in USD" },
+  { route: "GET /prices",  price: PRICES.prices,  params: "?symbols=BTC,ETH,SOL", desc: "Up to 20 spot crypto prices in one call" },
   { route: "GET /stock",   price: PRICES.stock,   params: "?ticker=AAPL",  desc: "Stock/ETF quote" },
   { route: "GET /markets", price: PRICES.markets, params: "?limit=10",     desc: "Top crypto market snapshot" },
   ...premiumCatalog,
@@ -146,6 +148,7 @@ function accept(price: string, description: string) {
 
 const routes = {
   "GET /price": accept(PRICES.price, "Spot crypto price"),
+  "GET /prices": accept(PRICES.prices, "Up to 20 spot crypto prices in one call"),
   "GET /stock": accept(PRICES.stock, "Stock/ETF quote"),
   "GET /markets": accept(PRICES.markets, "Top crypto market snapshot"),
   ...premiumRoutes,
@@ -752,7 +755,11 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   const q = req.query as Record<string, any>;
   let err: string | null = null;
-  if (req.path === "/onchain/safety") err = validateSafety(q);
+  if (req.path === "/prices") {
+    const n = parseSymbolList(String(q.symbols || "")).length;
+    if (n === 0) err = "symbols is required, comma-separated, e.g. ?symbols=BTC,ETH,SOL";
+    else if (n > MAX_BATCH_SYMBOLS) err = `at most ${MAX_BATCH_SYMBOLS} symbols per call`;
+  } else if (req.path === "/onchain/safety") err = validateSafety(q);
   else if (req.path === "/onchain/liquidity") err = validateLiquidity(q);
   else if (req.path.startsWith("/onchain/")) err = validateOnchain(req.path, q);
   else if (req.path === "/derivs") err = validateDerivs(q);
@@ -796,6 +803,10 @@ app.use(deployerReputationRouter);
 app.get("/price", (req, res) => {
   const symbol = String(req.query.symbol || "BTC");
   return deliver(res, "GET /price", priceToUsd(PRICES.price), symbol, () => cryptoPrice(symbol));
+});
+app.get("/prices", (req, res) => {
+  const symbols = parseSymbolList(String(req.query.symbols || ""));
+  return deliver(res, "GET /prices", priceToUsd(PRICES.prices), symbols.join(","), () => cryptoPrices(symbols));
 });
 app.get("/stock", (req, res) => {
   const ticker = String(req.query.ticker || "AAPL");

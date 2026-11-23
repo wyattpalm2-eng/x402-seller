@@ -47,6 +47,7 @@ const P = {
   price: process.env.PRICE_CRYPTO || "$0.01",
   stock: process.env.PRICE_STOCK || "$0.01",
   markets: process.env.PRICE_MARKETS || "$0.01",
+  prices: process.env.PRICE_CRYPTO_BATCH || "$0.02",
   signal: process.env.PRICE_SIGNAL || "$0.01",
   token: process.env.PRICE_ONCHAIN_TOKEN || "$0.01",
   trending: process.env.PRICE_ONCHAIN_TRENDING || "$0.01",
@@ -189,9 +190,15 @@ export const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET", path: "/price", price: P.price,
-    description: "Spot crypto price in USD from CoinGecko, normalized to one call. Saves an agent stitching price feeds from multiple tickers or managing a CoinGecko key; the price is the work completed, not a raw feed to process further.",
+    description: "Spot crypto price in USD from Coinbase, normalized to one call. Saves an agent stitching price feeds from multiple tickers or managing a CoinGecko key; the price is the work completed, not a raw feed to process further.",
     input: { symbol: { type: "string", required: false, default: "BTC", example: "ETH" } },
     output_example: { symbol: "BTC-USD", price_usd: 63950.12, source: "coinbase" },
+  },
+  {
+    method: "GET", path: "/prices", price: P.prices,
+    description: "Up to 20 spot crypto prices in ONE paid call (Coinbase). One payment instead of twenty: cheaper and twenty fewer round trips for a portfolio or watchlist. Unknown symbols are listed in errors without failing the batch.",
+    input: { symbols: { type: "string", required: true, example: "BTC,ETH,SOL" } },
+    output_example: { count: 3, prices: [{ symbol: "BTC-USD", price_usd: 61205.26 }, { symbol: "ETH-USD", price_usd: 1728.3 }, { symbol: "SOL-USD", price_usd: 128.4 }], errors: [], source: "coinbase" },
   },
   {
     method: "GET", path: "/stock", price: P.stock,
