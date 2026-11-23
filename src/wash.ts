@@ -162,7 +162,9 @@ export async function washReport(chain: Chain, token: string) {
   const addr = token.toLowerCase();
   const pools = await findPool(chain, addr);
   if (pools.length === 0) return null;
-  const head = parseInt(await rpc(chain, "eth_blockNumber", []), 16);
+  // A few blocks behind the tip: the fallback RPCs can lag each other, and asking one for a block
+  // only the other has seen fails the whole read ("block range extends beyond current head").
+  const head = parseInt(await rpc(chain, "eth_blockNumber", []), 16) - 6;
 
   let chosen: any = null;
   let data: { swaps: Swap[]; hours: number } = { swaps: [], hours: 0 };

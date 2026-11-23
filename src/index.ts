@@ -599,7 +599,18 @@ app.get(["/demo/weather", "/demo/weather/consensus"], freeRateLimit, async (req,
     res.status(502).json({ error: "upstream_unavailable" });
   }
 });
-app.get("/", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
+// Human-facing site (public/site.html): live checker, public track record, agent setup. Static,
+// read once at boot; every number on it is fetched live from the JSON endpoints. The old
+// server-rendered catalog page stays at /classic.
+const SITE_HTML = (() => {
+  try {
+    return fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "site.html"), "utf8");
+  } catch {
+    return null;
+  }
+})();
+app.get("/", freeRateLimit, (_req, res) => res.type("html").send(SITE_HTML ?? landingPage()));
+app.get("/classic", freeRateLimit, (_req, res) => res.type("html").send(landingPage()));
 
 // Remote MCP server (free, before the paywall): POST /mcp (Streamable HTTP).
 // Lets Claude/Cursor use x402-seller directly + makes it official-registry
