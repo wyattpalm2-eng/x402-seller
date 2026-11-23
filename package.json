@@ -12,6 +12,7 @@
     "mcp": "tsx mcp/server.mts"
   },
   "dependencies": {
+    "@coinbase/x402": "^2.1.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@x402/core": "^2.19.0",
     "@x402/evm": "^2.19.0",
@@ -31,5 +32,19 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "@coinbase/x402": {
+      "@x402/core": "2.19.0",
+      "@x402/evm": "2.19.0",
+      "@x402/extensions": "2.19.0",
+      "@x402/fetch": "2.19.0"
+    },
+    "@coinbase/cdp-sdk": {
+      "@x402/core": "2.19.0",
+      "@x402/evm": "2.19.0",
+      "@x402/extensions": "2.19.0",
+      "@x402/fetch": "2.19.0"
+    }
+  }
 }

@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import express, { type Request, type Response } from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { createFacilitatorConfig } from "@coinbase/x402";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { getReceiveAddress } from "./wallet.js";
 import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
@@ -78,7 +79,9 @@ const FACILITATOR_URLS: string[] = (() => {
   }
   return [override || "https://x402.org/facilitator"];
 })();
-const FACILITATOR_LABEL = FACILITATOR_URLS.length > 1 ? `${FACILITATOR_URLS.length} redundant (${FACILITATOR_URLS[0]}…)` : FACILITATOR_URLS[0];
+const FACILITATOR_LABEL =
+  (IS_MAINNET && process.env.CDP_API_KEY_ID?.trim() && process.env.CDP_API_KEY_SECRET?.trim() ? "CDP (Coinbase) first, then " : "") +
+  (FACILITATOR_URLS.length > 1 ? `${FACILITATOR_URLS.length} redundant (${FACILITATOR_URLS[0]}…)` : FACILITATOR_URLS[0]);
 
 if (!/^0x[a-fA-F0-9]{40}$/.test(PAY_TO)) {
   console.warn(`  WARN: PAY_TO does not look like a valid EVM address: ${PAY_TO}`);
@@ -118,7 +121,18 @@ const CATALOG = [
 // Register ALL configured facilitators. x402ResourceServer aggregates their
 // supported kinds, so as long as ANY one advertises this network's "exact"
 // scheme, paid routes work — one flaky operator can't break settlement.
+//
+// Coinbase's CDP facilitator goes FIRST when its keys are set. The server binds
+// each payment kind to the first facilitator that supports it, so this makes
+// every settlement run through CDP. That matters because Coinbase's Bazaar (the
+// directory agents actually search) only lists a route after a payment settles
+// through CDP; the keyless three can never get us indexed. They stay behind it
+// as fallbacks, so a CDP outage or bad key degrades to the old behaviour.
 const facilitators = FACILITATOR_URLS.map((url) => new HTTPFacilitatorClient({ url }));
+const CDP_ENABLED = IS_MAINNET && !!process.env.CDP_API_KEY_ID?.trim() && !!process.env.CDP_API_KEY_SECRET?.trim();
+if (CDP_ENABLED) {
+  facilitators.unshift(new HTTPFacilitatorClient(createFacilitatorConfig()));
+}
 const resourceServer = new x402ResourceServer(facilitators).register(NETWORK, new ExactEvmScheme());
 
 function accept(price: string, description: string) {
