@@ -31,7 +31,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { cryptoPrice, stockQuote, topMarkets } from "./data.js";
+import { cryptoPrice, stockQuote, topMarkets, cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { recordSale, priceToUsd } from "./stats.js";
 
@@ -134,10 +134,30 @@ async function gatherInputs(symbol: string): Promise<SignalInputs> {
   // Crypto path. Fetch spot (Coinbase, required) and 24h context (CoinGecko,
   // best-effort) in PARALLEL instead of one-then-the-other.
   const base = sym.includes("-") ? sym.split("-")[0] : sym;
-  const [spot, markets] = await Promise.all([
+  const pair = sym.includes("-") ? sym : `${sym}-USD`;
+  // 24h context from Coinbase Exchange's public stats (same provider as the spot price). CoinGecko
+  // was the only source until 2026-11-23, and it rate-limits Render's shared IP: the server's own
+  // twice-daily record showed /signal unable to answer in 24 of 45 half-day slots in November.
+  // Coinbase also gives the 24h high/low, so the range term momentumScore was written for finally
+  // has an input. CoinGecko stays as the fallback for the change alone.
+  const [spot, stats] = await Promise.all([
     cryptoPrice(sym),
-    topMarkets(50).catch(() => null), // context is optional; a spot price alone still signals
+    cached(`cbstats:${pair}`, () =>
+      getJson(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/stats`),
+    ).catch(() => null),
   ]);
+  const open = Number(stats?.open), hi = Number(stats?.high), lo = Number(stats?.low), last = Number(stats?.last);
+  if (Number.isFinite(open) && open > 0 && Number.isFinite(last) && Number.isFinite(hi) && Number.isFinite(lo) && hi >= lo) {
+    return {
+      price_usd: Number(spot.price_usd),
+      change_24h_pct: Number((((last - open) / open) * 100).toFixed(3)),
+      low_24h: lo,
+      high_24h: hi,
+      source: "coinbase",
+      base,
+    };
+  }
+  const markets = await topMarkets(50).catch(() => null); // fallback: change only, no range
 
   let change24h: number | undefined;
   const low24h: number | undefined = undefined;
