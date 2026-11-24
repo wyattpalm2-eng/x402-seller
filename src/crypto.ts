@@ -14,13 +14,14 @@ import { Router, type Request, type Response } from "express";
 import { cached, getJson } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { recordSale, priceToUsd } from "./stats.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 
-export const PRICE_TOKEN = process.env.PRICE_ONCHAIN_TOKEN || "$0.01";
-export const PRICE_TRENDING = process.env.PRICE_ONCHAIN_TRENDING || "$0.01";
-export const PRICE_NEW = process.env.PRICE_ONCHAIN_NEW || "$0.01";
-export const PRICE_DEFI = process.env.PRICE_ONCHAIN_DEFI || "$0.01";
+export const PRICE_TOKEN = price("PRICE_ONCHAIN_TOKEN");
+export const PRICE_TRENDING = price("PRICE_ONCHAIN_TRENDING");
+export const PRICE_NEW = price("PRICE_ONCHAIN_NEW");
+export const PRICE_DEFI = price("PRICE_ONCHAIN_DEFI");
 
 // ─── Allowlists / validators ────────────────────────────────────────────────
 // our slug -> upstream identifiers. Anything NOT in this map is rejected.

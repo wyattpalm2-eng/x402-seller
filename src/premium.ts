@@ -35,9 +35,10 @@ import { cryptoPrice, stockQuote, topMarkets, cached, getJson } from "./data.js"
 import { getReceiveAddress } from "./wallet.js";
 import { recordSale, priceToUsd } from "./stats.js";
 import { signalHistory } from "./truth-signal.js";
+import { price } from "./prices.js";
 
 // Price per call — kept here so the integrator sees one source of truth.
-export const PREMIUM_PRICE = process.env.PRICE_SIGNAL || "$0.01";
+export const PREMIUM_PRICE = price("PRICE_SIGNAL");
 
 // ─── Signal math ───────────────────────────────────────────────────────────
 

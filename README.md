@@ -100,7 +100,7 @@ Honest answer: the *snapshots* are free — the **judgment and the history are n
 1. The liquidity time-series is self-collected. There is no free API for "liquidity 1 hour ago."
 2. The composite catches what single sources miss: static-only scanners miss simulated sell-traps;
    simulation-only misses authority/mint risks. Disagreement between engines is itself signal (`needs_review`).
-3. One $0.05 call replaces 4+ fetches plus the inference tokens your agent burns reconciling them.
+3. One $0.02 call replaces 4+ fetches plus the inference tokens your agent burns reconciling them.
 4. It's keyless. Your agent can't fill signup forms — it *can* pay 5 cents.
 5. [The track record is public](https://x402-seller-m8nx.onrender.com/track-record), misses included.
    Judge the scorer by its record, not this README.
@@ -146,7 +146,7 @@ Tools: `vet_token` · `launch_radar` · `rug_check` · `liquidity_trend` · `mar
 - **No config:** works immediately — `vet_token` routes through the free demo (1 real call/hour),
   `track_record`/`catalog` are always free.
 - **`X402_BUYER_PK=0x…`** (a burner wallet with a few dollars of USDC on Base): every tool goes
-  unlimited, settling ~$0.01–0.05 per call via x402 automatically. No account anywhere.
+  unlimited, settling ~$0.003–0.05 per call via x402 automatically. No account anywhere.
 - **`X402_SELLER_URL=…`**: point the tools at your own self-hosted instance.
 
 ## Run your own

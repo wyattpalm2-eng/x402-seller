@@ -10,9 +10,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./yield-surface.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_YIELD_SURFACE = process.env.PRICE_YIELD_SURFACE || "$0.01";
+export const PRICE_YIELD_SURFACE = price("PRICE_YIELD_SURFACE");
 
 export const yieldSurfaceRouter: Router = Router();
 yieldSurfaceRouter.get("/yield/surface", (req: Request, res: Response) => {

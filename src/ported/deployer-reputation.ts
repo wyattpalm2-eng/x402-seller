@@ -10,9 +10,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./deployer-reputation.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_DEPLOYER_REPUTATION = process.env.PRICE_DEPLOYER_REPUTATION || "$0.05";
+export const PRICE_DEPLOYER_REPUTATION = price("PRICE_DEPLOYER_REPUTATION");
 
 export const deployerReputationRouter: Router = Router();
 deployerReputationRouter.get("/vet/deployer/:address", (req: Request, res: Response) => {

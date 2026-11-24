@@ -16,6 +16,7 @@ import { labeled } from "./keywords.js";
 import { batchDiscovery } from "./batch.js";
 import { stableDiscovery } from "./stable.js";
 import { trustDiscovery } from "./trust.js";
+import { price } from "./prices.js";
 
 const NETWORK = process.env.NETWORK?.trim() || "eip155:84532";
 const FACILITATOR = process.env.FACILITATOR_URL?.trim() || "https://x402.org/facilitator";
@@ -49,34 +50,34 @@ const WHY_PAY = [
 ];
 
 const P = {
-  price: process.env.PRICE_CRYPTO || "$0.01",
-  stock: process.env.PRICE_STOCK || "$0.01",
-  markets: process.env.PRICE_MARKETS || "$0.01",
-  prices: process.env.PRICE_CRYPTO_BATCH || "$0.02",
-  signal: process.env.PRICE_SIGNAL || "$0.01",
-  token: process.env.PRICE_ONCHAIN_TOKEN || "$0.01",
-  trending: process.env.PRICE_ONCHAIN_TRENDING || "$0.01",
-  newp: process.env.PRICE_ONCHAIN_NEW || "$0.01",
-  defi: process.env.PRICE_ONCHAIN_DEFI || "$0.01",
-  safety: process.env.PRICE_ONCHAIN_SAFETY || "$0.01",
-  liquidity: process.env.PRICE_ONCHAIN_LIQUIDITY || "$0.01",
-  derivs: process.env.PRICE_DERIVS || "$0.01",
-  vet: process.env.PRICE_VET || "$0.005",
-  brief: process.env.PRICE_BRIEF || "$0.01",
-  screen: process.env.PRICE_SCREEN || "$0.01",
-  alpha: process.env.PRICE_ALPHA || "$0.01",
-  weather: process.env.PRICE_WEATHER || "$0.01",
+  price: price("PRICE_CRYPTO"),
+  stock: price("PRICE_STOCK"),
+  markets: price("PRICE_MARKETS"),
+  prices: price("PRICE_CRYPTO_BATCH"),
+  signal: price("PRICE_SIGNAL"),
+  token: price("PRICE_ONCHAIN_TOKEN"),
+  trending: price("PRICE_ONCHAIN_TRENDING"),
+  newp: price("PRICE_ONCHAIN_NEW"),
+  defi: price("PRICE_ONCHAIN_DEFI"),
+  safety: price("PRICE_ONCHAIN_SAFETY"),
+  liquidity: price("PRICE_ONCHAIN_LIQUIDITY"),
+  derivs: price("PRICE_DERIVS"),
+  vet: price("PRICE_VET"),
+  brief: price("PRICE_BRIEF"),
+  screen: price("PRICE_SCREEN"),
+  alpha: price("PRICE_ALPHA"),
+  weather: price("PRICE_WEATHER"),
   // Crew-ported endpoints. These were live and sellable for a day while being INVISIBLE to every
   // x402 crawler, because the porter wired index.ts but not this spec — /catalog listed them,
   // /.well-known/x402.json did not, and the manifest is what directories actually ingest.
-  agMetrics: process.env.PRICE_AG_METRICS || "$0.01",
-  stormRisk: process.env.PRICE_STORM_RISK || "$0.01",
-  walletFingerprint: process.env.PRICE_WALLET_FINGERPRINT || "$0.01",
-  tokenRisk: process.env.PRICE_TOKEN_RISK || "$0.01",
-  tokenConcentration: process.env.PRICE_TOKEN_CONCENTRATION || "$0.01",
-  etfFlows: process.env.PRICE_ETF_FLOWS || "$0.01",
-  yieldSurface: process.env.PRICE_YIELD_SURFACE || "$0.01",
-  deployer: process.env.PRICE_DEPLOYER_REPUTATION || "$0.05",
+  agMetrics: price("PRICE_AG_METRICS"),
+  stormRisk: price("PRICE_STORM_RISK"),
+  walletFingerprint: price("PRICE_WALLET_FINGERPRINT"),
+  tokenRisk: price("PRICE_TOKEN_RISK"),
+  tokenConcentration: price("PRICE_TOKEN_CONCENTRATION"),
+  etfFlows: price("PRICE_ETF_FLOWS"),
+  yieldSurface: price("PRICE_YIELD_SURFACE"),
+  deployer: price("PRICE_DEPLOYER_REPUTATION"),
 };
 
 export interface Endpoint {

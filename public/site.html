@@ -255,7 +255,7 @@ footer a:hover{color:var(--ink)}
               <div class="cell"><div class="k">Liquidity</div><div class="n" id="r-liq">–</div><div class="s" id="r-liq-s"></div></div>
             </div>
             <ul class="why" id="r-why"></ul>
-            <p class="note">Same code path agents pay $0.05 for at <span class="mono">/vet</span>. Not financial advice: a six-hour read, not a promise.</p>
+            <p class="note">Same code path agents pay $0.02 for at <span class="mono">/vet</span>. Not financial advice: a six-hour read, not a promise.</p>
           </div>
         </div>
       </div>
@@ -425,7 +425,7 @@ const { verdict, survival, why } = await res.json();</span></pre>
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
         $("err").textContent = r.status === 429
-          ? "Free checks are used up for now (one per hour). Agents get unlimited checks at /vet for $0.05 each, no key needed."
+          ? "Free checks are used up for now (one per hour). Agents get unlimited checks at /vet for $0.02 each, no key needed."
           : (d.detail || "That check could not run. Check the address and chain.");
         show("err", true);
         return;

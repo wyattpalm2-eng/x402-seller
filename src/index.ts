@@ -62,6 +62,7 @@ import { startWarm } from "./warm.js";
 import { dashAuthed, loginPage, dashAuthRouter } from "./dashauth.js";
 import { trustRouter, trustRoutes, trustCatalog, validateTrust, startTrustIndex } from "./trust.js";
 import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
+import { price } from "./prices.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4021);
@@ -97,10 +98,10 @@ if (!/^0x[a-fA-F0-9]{40}$/.test(PAY_TO)) {
 
 // Price per call. Cents-to-dollars strings, x402 format.
 const PRICES = {
-  price: process.env.PRICE_CRYPTO || "$0.01",
-  stock: process.env.PRICE_STOCK || "$0.01",
-  markets: process.env.PRICE_MARKETS || "$0.01",
-  prices: process.env.PRICE_CRYPTO_BATCH || "$0.02",
+  price: price("PRICE_CRYPTO"),
+  stock: price("PRICE_STOCK"),
+  markets: price("PRICE_MARKETS"),
+  prices: price("PRICE_CRYPTO_BATCH"),
 };
 
 const CATALOG = [
@@ -533,7 +534,7 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
     return void res.status(429).json({
       error: "demo_limit",
       detail: `${DEMO_PER_IP_DAY} free demo vets per caller per day, and you have used them all. The paid endpoint has no limits.`,
-      paid_endpoint: "/vet", price: process.env.PRICE_VET || "$0.01",
+      paid_endpoint: "/vet", price: price("PRICE_VET"),
       resets: "00:00 UTC",
     });
   if (_demoCount >= DEMO_DAILY_CAP)
@@ -552,7 +553,7 @@ app.get("/demo/vet", freeRateLimit, async (req, res) => {
         note: "free demo — identical output to the paid /vet, no watered-down data",
         remaining_today: DEMO_PER_IP_DAY - (used + 1),
         unlimited: "/vet via x402",
-        price: process.env.PRICE_VET || "$0.01",
+        price: price("PRICE_VET"),
       },
     });
   } catch {
@@ -581,7 +582,7 @@ app.get(["/demo/weather", "/demo/weather/consensus"], freeRateLimit, async (req,
     return void res.status(429).json({
       error: "demo_limit",
       detail: `${DEMO_PER_IP_DAY} free weather consensus calls per caller per day, and you have used them all. The paid endpoint has no limits.`,
-      paid_endpoint: "/weather/consensus", price: process.env.PRICE_WEATHER || "$0.01",
+      paid_endpoint: "/weather/consensus", price: price("PRICE_WEATHER"),
       resets: "00:00 UTC",
     });
   if (_wDemoCount >= DEMO_DAILY_CAP)
@@ -595,7 +596,7 @@ app.get(["/demo/weather", "/demo/weather/consensus"], freeRateLimit, async (req,
     bumpDemo("weather"); // real-demand signal → /demand
     res.json({
       ...data,
-      demo: { note: "free demo — identical output to the paid /weather/consensus", remaining_today: DEMO_PER_IP_DAY - (wUsed + 1), unlimited: "/weather/consensus via x402", price: process.env.PRICE_WEATHER || "$0.01" },
+      demo: { note: "free demo — identical output to the paid /weather/consensus", remaining_today: DEMO_PER_IP_DAY - (wUsed + 1), unlimited: "/weather/consensus via x402", price: price("PRICE_WEATHER") },
     });
   } catch {
     res.status(502).json({ error: "upstream_unavailable" });

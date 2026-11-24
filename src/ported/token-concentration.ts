@@ -10,9 +10,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./token-concentration.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_TOKEN_CONCENTRATION = process.env.PRICE_TOKEN_CONCENTRATION || "$0.01";
+export const PRICE_TOKEN_CONCENTRATION = price("PRICE_TOKEN_CONCENTRATION");
 
 export const tokenConcentrationRouter: Router = Router();
 tokenConcentrationRouter.get("/token/concentration/:address", (req: Request, res: Response) => {

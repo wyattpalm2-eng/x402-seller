@@ -23,9 +23,10 @@ import { priceToUsd } from "./stats.js";
 import { getReceiveAddress } from "./wallet.js";
 import { getJson, cached } from "./data.js";
 import { blocksPerHour } from "./blocktime.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_TOKEN_WASH = process.env.PRICE_TOKEN_WASH || "$0.03";
+export const PRICE_TOKEN_WASH = price("PRICE_TOKEN_WASH");
 
 // Block rate is measured live (blocktime.ts): Base is 0.2s/block, not the 2s this file once assumed.
 const CHAINS = {

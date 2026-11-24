@@ -10,9 +10,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./token-risk.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_TOKEN_RISK = process.env.PRICE_TOKEN_RISK || "$0.01";
+export const PRICE_TOKEN_RISK = price("PRICE_TOKEN_RISK");
 
 export const tokenRiskRouter: Router = Router();
 tokenRiskRouter.get("/token/risk/:address", (req: Request, res: Response) => {

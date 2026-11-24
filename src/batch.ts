@@ -20,12 +20,13 @@ import { signalVerdict } from "./premium.js";
 import { signalHistory } from "./truth-signal.js";
 import { marketBrief } from "./composites.js";
 import { topMarkets, fearGreed, cached, getJson } from "./data.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_SIGNALS = process.env.PRICE_SIGNALS || "$0.03";
-export const PRICE_BRIEFS = process.env.PRICE_BRIEFS || "$0.03";
-export const PRICE_PULSE = process.env.PRICE_PULSE || "$0.02";
-export const PRICE_MOVERS = process.env.PRICE_MOVERS || "$0.01";
+export const PRICE_SIGNALS = price("PRICE_SIGNALS");
+export const PRICE_BRIEFS = price("PRICE_BRIEFS");
+export const PRICE_PULSE = price("PRICE_PULSE");
+export const PRICE_MOVERS = price("PRICE_MOVERS");
 const MAX_SIGNALS = 20;
 const MAX_BRIEFS = 10;
 const PULSE_ASSETS = ["BTC", "ETH", "SOL"];

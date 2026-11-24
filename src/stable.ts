@@ -12,10 +12,11 @@ import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
 import { getReceiveAddress } from "./wallet.js";
 import { cached, getJson } from "./data.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_DEPEG = process.env.PRICE_DEPEG || "$0.01";
-export const PRICE_STABLE_FLOWS = process.env.PRICE_STABLE_FLOWS || "$0.02";
+export const PRICE_DEPEG = price("PRICE_DEPEG");
+export const PRICE_STABLE_FLOWS = price("PRICE_STABLE_FLOWS");
 
 const MIN_SUPPLY_USD = 500_000_000; // ignore tiny stablecoins: their "price" is often a stale quote
 const WATCH_PCT = 0.2;

@@ -25,9 +25,10 @@ import { getReceiveAddress } from "./wallet.js";
 import { cached, getJson } from "./data.js";
 import web from "./ported/lib/web.cjs";
 import { blocksPerHour } from "./blocktime.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_X402_CHECK = process.env.PRICE_X402_CHECK || "$0.005";
+export const PRICE_X402_CHECK = price("PRICE_X402_CHECK");
 
 const BASE = "eip155:8453";
 const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";

@@ -12,9 +12,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./weather-consensus.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_WEATHER = process.env.PRICE_WEATHER || "$0.01";
+export const PRICE_WEATHER = price("PRICE_WEATHER");
 
 /**
  * Quality gate at the ROUTE layer (the crew's handler stays vendored verbatim):

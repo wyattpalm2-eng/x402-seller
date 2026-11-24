@@ -29,6 +29,7 @@ import { priceToUsd } from "./stats.js";
 import { empiricalRisk } from "./calibration.js";
 import { rawRows } from "./record.js";
 import { washReport } from "./wash.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 // PRICING (revised 2026-08-11). Flat $0.01 across 23 endpoints priced the one thing nobody else
@@ -40,8 +41,8 @@ const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${
 // on a $500 position is 0.10% — under the swap fee it is already paying to enter.
 // The MCP catalog has advertised /vet at $0.05 since launch, so this also ends a real mismatch
 // between the quoted price and the charged one.
-export const PRICE_VET = process.env.PRICE_VET || "$0.05";
-export const PRICE_BRIEF = process.env.PRICE_BRIEF || "$0.01";
+export const PRICE_VET = price("PRICE_VET");
+export const PRICE_BRIEF = price("PRICE_BRIEF");
 
 const SYMBOL_RE = /^[A-Z0-9-]{1,12}$/;
 

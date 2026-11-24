@@ -45,10 +45,11 @@ import { priceToUsd } from "./stats.js";
 import { solanaSafetyReport, SOL_ADDR } from "./solsafety.js";
 import { verdictHonesty } from "./calib-cache.js";
 import { survival } from "./survival.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 // Carries the survival model — see the pricing note in composites.ts.
-export const PRICE_SAFETY = process.env.PRICE_ONCHAIN_SAFETY || "$0.05";
+export const PRICE_SAFETY = price("PRICE_ONCHAIN_SAFETY");
 
 // our slug -> GoPlus numeric chain id (EVM). Solana routes to solsafety.ts
 // (GoPlus Solana API + RugCheck — a different composite for different rug physics).

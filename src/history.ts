@@ -26,9 +26,10 @@ import { getJson } from "./data.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
 import { getReceiveAddress } from "./wallet.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_LIQUIDITY = process.env.PRICE_ONCHAIN_LIQUIDITY || "$0.01";
+export const PRICE_LIQUIDITY = price("PRICE_ONCHAIN_LIQUIDITY");
 
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 const DS_CHAIN: Record<string, string> = {

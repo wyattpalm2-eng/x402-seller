@@ -10,9 +10,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./wx-ag.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_WX_AG = process.env.PRICE_WX_AG || "$0.01";
+export const PRICE_WX_AG = price("PRICE_WX_AG");
 
 export const wxAgRouter: Router = Router();
 wxAgRouter.get("/wx/ag/:lat/:lon", (req: Request, res: Response) => {

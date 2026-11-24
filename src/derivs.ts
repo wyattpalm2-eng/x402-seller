@@ -19,9 +19,10 @@ import { cached } from "./data.js";
 import { getReceiveAddress } from "./wallet.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_DERIVS = process.env.PRICE_DERIVS || "$0.01";
+export const PRICE_DERIVS = price("PRICE_DERIVS");
 
 const SYMBOL_RE = /^[A-Z0-9]{1,12}$/;
 

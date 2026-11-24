@@ -10,9 +10,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./wallet-fingerprint.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_WALLET_FINGERPRINT = process.env.PRICE_WALLET_FINGERPRINT || "$0.01";
+export const PRICE_WALLET_FINGERPRINT = price("PRICE_WALLET_FINGERPRINT");
 
 export const walletFingerprintRouter: Router = Router();
 walletFingerprintRouter.get("/wallet/fingerprint/:address", (req: Request, res: Response) => {

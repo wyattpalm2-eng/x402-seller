@@ -10,9 +10,10 @@ import { serve } from "../crypto.js";
 import { priceToUsd } from "../stats.js";
 import { getReceiveAddress } from "../wallet.js";
 import handler from "./storm-risk.handler.cjs";
+import { price } from "../prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
-export const PRICE_STORM_RISK = process.env.PRICE_STORM_RISK || "$0.01";
+export const PRICE_STORM_RISK = price("PRICE_STORM_RISK");
 
 export const stormRiskRouter: Router = Router();
 stormRiskRouter.get("/wx/storm", (req: Request, res: Response) => {

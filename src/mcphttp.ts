@@ -113,7 +113,7 @@ function buildServer(): McpServer {
 
   server.tool(
     "weather_consensus",
-    "Cross-source weather consensus for any coordinates: blends Open-Meteo + NOAA/NWS + 7Timer into one temperature with an agreement score (how much independent models agree). Keyless multi-source ground truth in one call — built by the autonomous crew, ported through the bridge. FREE demo (shared daily budget); unlimited via the paid HTTP API ($0.03).",
+    "Cross-source weather consensus for any coordinates: blends Open-Meteo + NOAA/NWS + 7Timer into one temperature with an agreement score (how much independent models agree). Keyless multi-source ground truth in one call — built by the autonomous crew, ported through the bridge. FREE demo (shared daily budget); unlimited via the paid HTTP API (/weather/consensus, $0.01).",
     { lat: z.number().min(-90).max(90).describe("latitude"), lon: z.number().min(-180).max(180).describe("longitude") },
     async ({ lat, lon }) => {
       if (!demoAllowedFor("weather_consensus")) return overBudget();
@@ -124,7 +124,7 @@ function buildServer(): McpServer {
 
   server.tool(
     "market_pulse",
-    "The whole crypto market in one answer: overall risk_on / risk_off regime from BTC, ETH and SOL (price move, perp funding, sentiment), market breadth across liquid coins, top gainers and losers, and fear/greed, each with reasons. The call to make before any trade. FREE demo (shared daily budget); unlimited via the paid HTTP API (/pulse, $0.02).",
+    "The whole crypto market in one answer: overall risk_on / risk_off regime from BTC, ETH and SOL (price move, perp funding, sentiment), market breadth across liquid coins, top gainers and losers, and fear/greed, each with reasons. The call to make before any trade. FREE demo (shared daily budget); unlimited via the paid HTTP API (/pulse, $0.003).",
     {},
     async () => {
       if (!demoAllowedFor("market_pulse")) return overBudget();
@@ -136,7 +136,7 @@ function buildServer(): McpServer {
 
   server.tool(
     "top_movers",
-    "Biggest 24h gainers and losers among actively traded coins (at least $2M of 24h volume, so no thin-pair 'pumps'), plus breadth and the most-traded coins. Each mover shows where it sits in its day range. FREE demo (shared daily budget); unlimited via the paid HTTP API (/movers, $0.01).",
+    "Biggest 24h gainers and losers among actively traded coins (at least $2M of 24h volume, so no thin-pair 'pumps'), plus breadth and the most-traded coins. Each mover shows where it sits in its day range. FREE demo (shared daily budget); unlimited via the paid HTTP API (/movers, $0.003).",
     { limit: z.number().int().min(1).max(10).default(5) },
     async ({ limit }) => {
       if (!demoAllowedFor("top_movers")) return overBudget();

@@ -17,10 +17,11 @@ import { getReceiveAddress } from "./wallet.js";
 import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
 import { safetyReport, SAFETY_CHAINS } from "./safety.js";
+import { price } from "./prices.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 // Batch survival screen — runs the model over many addresses in one call. See composites.ts.
-export const PRICE_SCREEN = process.env.PRICE_SCREEN || "$0.05";
+export const PRICE_SCREEN = price("PRICE_SCREEN");
 const EVM_ADDR = /^0x[a-fA-F0-9]{40}$/;
 const MAX_TOKENS = 8;
 
