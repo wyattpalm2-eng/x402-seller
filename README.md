@@ -47,7 +47,7 @@ const r = await payFetch("https://x402-seller-m8nx.onrender.com/vet?chain=base&a
 ## Endpoints
 
 <!-- pricing:start -->
-Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog) by `scripts/readme-pricing.mts` (33 paid routes). The 402 challenge is the price of record; this table is a copy of it.
+Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog) by `scripts/readme-pricing.mts` (29 paid routes). The 402 challenge is the price of record; this table is a copy of it.
 
 | Route | Price | What you get |
 |---|---|---|
@@ -65,24 +65,20 @@ Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog
 | `GET /weather/consensus?lat=40.71&lon=-74.01` | $0.01 | Cross-source weather consensus + agreement score (keyless: Open-Meteo + NOAA + 7Timer). |
 | `GET /wx/ag/:lat/:lon` | $0.01 | Agricultural risk metrics from Open-Meteo: 13 hourly variables synthesized into a computed ag-risk score 0-100 with drought/excess-precip/high-wind/high-VPD/low-soil-moisture flags. |
 | `GET /wx/storm?lat=30.26&lon=-97.74` | $0.01 | Storm risk for any coordinate: resolves NOAA/NWS active-alert GeoJSON polygons with real point-in-polygon math, blends in wind and severity, and returns one scored risk verdict. |
-| `GET /yield/surface?chain=base` | $0.01 | Risk-adjusted yield surface across Base and Ethereum lending, DEX, and restaking pools -- pulls real pool data from yields.llama.fi, computes IL-risk-adjusted APY and cross-protocol TVL context, sorted by adjusted return. |
 | `GET /briefs?symbols=BTC,ETH,SOL` | $0.005 | Up to 10 market-regime reads (risk_on / risk_off / neutral from price move, perp funding and sentiment) in ONE paid call, plus an overall verdict for the basket. |
 | `GET /prices?symbols=BTC,ETH,SOL` | $0.005 | Up to 20 spot crypto prices in one call |
 | `GET /watchlist?symbols=BTC,ETH,SOL` | $0.005 | Up to 20 momentum verdicts (bullish / bearish / neutral) in ONE paid call, with a tally. |
 | `GET /x402/check?url=https://… or ?payTo=0x…` | $0.005 | Should my agent pay this x402 seller? |
 | `GET /brief?symbol=BTC` | $0.003 | Market regime in one call: risk_on/risk_off/neutral + reasons (spot, funding, OI, sentiment) |
-| `GET /depeg` | $0.003 | Is any major USD stablecoin off its $1 peg right now? |
 | `GET /derivs?symbol=BTC` | $0.003 | Perp funding rate + open interest + crowded-long/short squeeze signal |
 | `GET /markets?limit=10` | $0.003 | Top crypto market snapshot |
 | `GET /movers?limit=5` | $0.003 | Biggest 24h gainers and losers among actively traded coins (Coinbase USD pairs with at least $2M of 24h volume, so no three-trade 'pumps'), plus market breadth and the most-traded coins. |
-| `GET /onchain/defi?chain=base` | $0.003 | Chain TVL + top protocols |
 | `GET /onchain/new?chain=base` | $0.003 | Newly launched pools — launch hunting |
 | `GET /onchain/token?query=PEPE  \|  ?chain=base&address=0x…` | $0.003 | Token snapshot: price, liquidity, volume, 24h change, FDV, best pool |
 | `GET /onchain/trending?chain=base` | $0.003 | Trending DEX pools |
 | `GET /price?symbol=BTC` | $0.003 | Spot crypto price in USD |
 | `GET /pulse` | $0.003 | The whole crypto market in one answer: overall risk_on / risk_off regime from BTC, ETH and SOL briefs, market breadth (% of top coins up), top 3 gainers and losers, and sentiment, each with reasons. |
 | `GET /signal?symbol=BTC` | $0.003 | Composite market signal: spot + 24h change + momentum → bullish/bearish/neutral |
-| `GET /stablecoins/flows?limit=15` | $0.003 | Is stablecoin money moving onto or off each chain? |
 | `GET /stock?ticker=AAPL` | $0.003 | Stock/ETF quote |
 <!-- pricing:end -->
 
