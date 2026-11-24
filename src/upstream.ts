@@ -25,7 +25,6 @@ type Probe = { name: string; url: string; feeds: string };
 const PROBES: Probe[] = [
   { name: "open-meteo", url: "https://api.open-meteo.com/v1/forecast?latitude=40.71&longitude=-74.01&current=temperature_2m", feeds: "/weather/consensus, /wx/ag, /wx/storm" },
   { name: "dexscreener", url: "https://api.dexscreener.com/latest/dex/tokens/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", feeds: "/vet, /screen, /token/risk, /onchain/token" },
-  { name: "defillama", url: "https://api.llama.fi/v2/chains", feeds: "/onchain/defi" },
   { name: "coingecko", url: "https://api.coingecko.com/api/v3/ping", feeds: "/price, /markets" },
 ];
 

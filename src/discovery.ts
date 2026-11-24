@@ -13,6 +13,7 @@ import { Router, type Request, type Response } from "express";
 import { getReceiveAddress } from "./wallet.js";
 import { washDiscovery } from "./wash.js";
 import { labeled } from "./keywords.js";
+import { RETIRED_PATHS } from "./licensing.js";
 import { batchDiscovery } from "./batch.js";
 import { stableDiscovery } from "./stable.js";
 import { trustDiscovery } from "./trust.js";
@@ -673,3 +674,5 @@ discoveryRouter.get("/llms.txt", (req: Request, res: Response) => {
 // Put each route's plain-words label in front of its description (see keywords.ts). Runs once at
 // module load, before index.ts builds the 402 bazaar extensions or anything serves these files.
 for (const e of ENDPOINTS) e.description = labeled(e.path, e.description);
+// Not licensed to sell these (licensing.ts): keep them out of every discovery document.
+for (let i = ENDPOINTS.length - 1; i >= 0; i--) if (RETIRED_PATHS.has(ENDPOINTS[i].path)) ENDPOINTS.splice(i, 1);

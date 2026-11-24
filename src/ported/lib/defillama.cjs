@@ -10,6 +10,8 @@
   risk flags, cross-protocol comparisons a lone bot won't assemble).
 */
 async function get(url) {
+  // DefiLlama's terms forbid commercial use without written permission (see src/licensing.ts).
+  if (process.env.DEFILLAMA_LICENSED !== '1') throw new Error('DefiLlama data disabled: no commercial licence');
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 20000);
   try { const r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'OpenClaw-Crew/1.0' } }); return await r.json(); }
   finally { clearTimeout(t); }

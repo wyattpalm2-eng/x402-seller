@@ -61,6 +61,7 @@ import { stableRouter, stableRoutes, stableCatalog, validateStable } from "./sta
 import { startWarm } from "./warm.js";
 import { dashAuthed, loginPage, dashAuthRouter } from "./dashauth.js";
 import { trustRouter, trustRoutes, trustCatalog, validateTrust, startTrustIndex } from "./trust.js";
+import { RETIRED_PATHS, RETIRED_DETAIL } from "./licensing.js";
 import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
 import { price } from "./prices.js";
 
@@ -194,6 +195,11 @@ const routes = {
 // extension — the facilitator/settlement wiring below is untouched. This payload
 // is what probe-crawled catalogs (PayAI /discovery/resources, CDP Bazaar) ingest,
 // so listing there becomes a code artifact, not a manual submission.
+// Retire routes whose data we are not licensed to sell (licensing.ts): out of the paywall map and
+// the catalog, so nothing advertises or charges for them.
+for (const p of RETIRED_PATHS) delete (routes as Record<string, unknown>)[`GET ${p}`];
+for (let i = CATALOG.length - 1; i >= 0; i--) if (RETIRED_PATHS.has(String(CATALOG[i].route).split(" ")[1])) CATALOG.splice(i, 1);
+
 // Plain-words label in front of every paid route's 402 description (see keywords.ts).
 for (const [key, rc] of Object.entries(routes as Record<string, any>)) {
   if (typeof rc?.description === "string") rc.description = labeled(key.split(" ")[1], rc.description);
@@ -699,6 +705,12 @@ app.use((req, res, next) => {
   });
 });
 
+// Retired routes answer 410 before the paywall (they are no longer in it) and before their old
+// handlers, which would otherwise now serve them for free.
+app.use((req, res, next) => {
+  if (RETIRED_PATHS.has(req.path)) return void res.status(410).json({ error: "retired", detail: RETIRED_DETAIL });
+  next();
+});
 app.use(paymentMiddleware(routes, resourceServer));
 
 // ─── SETTLEMENT RECEIPTS ─────────────────────────────────────────────────
