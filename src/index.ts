@@ -60,6 +60,7 @@ import { labeled } from "./keywords.js";
 import { stableRouter, stableRoutes, stableCatalog, validateStable } from "./stable.js";
 import { startWarm } from "./warm.js";
 import { dashAuthed, loginPage, dashAuthRouter } from "./dashauth.js";
+import { trustRouter, trustRoutes, trustCatalog, validateTrust, startTrustIndex } from "./trust.js";
 import { batchRouter, batchRoutes, batchCatalog, validateBatch, coinbaseMarkets } from "./batch.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────
@@ -126,6 +127,7 @@ const CATALOG = [
   ...washCatalog,
   ...batchCatalog,
   ...stableCatalog,
+  ...trustCatalog,
   ...deployerReputationCatalog,
 ];
 
@@ -179,6 +181,7 @@ const routes = {
   ...washRoutes,
   ...batchRoutes,
   ...stableRoutes,
+  ...trustRoutes,
   ...deployerReputationRoutes,
 };
 
@@ -791,6 +794,7 @@ app.use((req, res, next) => {
   else if (req.path.startsWith("/token/wash/")) err = validateWash(q, req.path);
   else if (req.path === "/watchlist" || req.path === "/briefs" || req.path === "/pulse" || req.path === "/movers") err = validateBatch(q, req.path);
   else if (req.path === "/depeg" || req.path === "/stablecoins/flows") err = validateStable(q, req.path);
+  else if (req.path === "/x402/check") err = validateTrust(q);
   else if (req.path.startsWith("/vet/deployer/")) err = validateDeployerReputation(q, req.path);
   if (err) return void res.status(400).json({ error: "bad_request", detail: err });
   next();
@@ -816,6 +820,7 @@ app.use(tokenRiskRouter);
 app.use(washRouter);
 app.use(batchRouter);
 app.use(stableRouter);
+app.use(trustRouter);
 app.use(deployerReputationRouter);
 
 // Paid handlers. These only run AFTER payment has settled.
@@ -920,6 +925,7 @@ app.listen(PORT, () => {
   startRecord(); // begin the self-graded track record (/track-record — the public receipts)
   startTruth(); // begin the truth engine (every endpoint grades itself — /truth/weather)
   startWarm(); // keep the homepage example tokens cached (warm.ts)
+  startTrustIndex(); // daily index of every Base x402 seller for /x402/check (trust.ts)
   startTruthSignal(); // second enrollment: /signal + /brief grade their market calls (/truth/signal)
   startDemandHistory(); // snapshot /demand to a committed JSONL so the trend survives redeploys
 });

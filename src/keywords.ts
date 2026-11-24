@@ -32,6 +32,7 @@ export const LABELS: Record<string, string> = {
   "/derivs": "Crypto funding rates and open interest.",
   "/depeg": "Stablecoin depeg monitor.",
   "/stablecoins/flows": "Stablecoin flows by chain: where money is moving.",
+  "/x402/check": "x402 seller trust check: should my agent pay this endpoint?",
 };
 
 const norm = (p: string) => p.replace(/\{(\w+)\}/g, ":$1");
