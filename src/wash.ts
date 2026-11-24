@@ -22,14 +22,17 @@ import { serve } from "./crypto.js";
 import { priceToUsd } from "./stats.js";
 import { getReceiveAddress } from "./wallet.js";
 import { getJson, cached } from "./data.js";
+import { blocksPerHour } from "./blocktime.js";
 
 const NETWORK = (process.env.NETWORK?.trim() || "eip155:84532") as `${string}:${string}`;
 export const PRICE_TOKEN_WASH = process.env.PRICE_TOKEN_WASH || "$0.03";
 
+// Block rate is measured live (blocktime.ts): Base is 0.2s/block, not the 2s this file once assumed.
 const CHAINS = {
-  base: { rpcs: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"], blocksPerHour: 1800, dexChainId: "base" },
-  eth: { rpcs: ["https://ethereum-rpc.publicnode.com"], blocksPerHour: 300, dexChainId: "ethereum" },
+  base: { rpcs: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"], dexChainId: "base" },
+  eth: { rpcs: ["https://ethereum-rpc.publicnode.com"], dexChainId: "ethereum" },
 } as const;
+const MAX_LOG_RANGE = 48_000; // public RPCs refuse eth_getLogs spans over 50k blocks
 type Chain = keyof typeof CHAINS;
 
 const TOPIC = {
@@ -40,7 +43,7 @@ const TOPIC = {
 };
 const MIN_SWAPS = 20; // below this the verdict is "insufficient_data", not a guess
 const MAX_SWAPS = 150; // cap the tx lookups per call
-const MAX_WINDOWS = 4; // 10min, 40min, 2.7h, 10.7h of history at most
+const MAX_WINDOWS = 4; // 10min, 40min, 2.7h, then capped by MAX_LOG_RANGE
 
 async function rpc(chain: Chain, method: string, params: unknown[]): Promise<any> {
   let last: unknown;
@@ -128,7 +131,8 @@ async function recentSwaps(chain: Chain, poolAddr: string, tokenIs0: boolean, he
   // Start small and widen: a busy pool (AERO, thousands of swaps an hour) makes public RPCs
   // reject a full hour of logs, while a quiet token needs hours to show anything. If a wider
   // window is refused, keep the narrower one we already have.
-  let span = Math.round(CHAINS[chain].blocksPerHour / 6);
+  const bph = await blocksPerHour(chain);
+  let span = Math.round(bph / 6);
   let logs: any[] = [];
   let hours = 0;
   for (let w = 0; w < MAX_WINDOWS; w++) {
@@ -147,9 +151,9 @@ async function recentSwaps(chain: Chain, poolAddr: string, tokenIs0: boolean, he
       break;
     }
     logs = got;
-    hours = Number((span / CHAINS[chain].blocksPerHour).toFixed(2));
-    if (logs.length >= MIN_SWAPS * 2) break;
-    span *= 4;
+    hours = Number((span / bph).toFixed(2));
+    if (logs.length >= MIN_SWAPS * 2 || span >= MAX_LOG_RANGE) break;
+    span = Math.min(span * 4, MAX_LOG_RANGE);
   }
   const swaps = logs
     .map((l) => decode(l, tokenIs0))

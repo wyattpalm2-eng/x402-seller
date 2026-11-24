@@ -37,8 +37,8 @@ jobs:
           TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
           RPCS = ["https://base-rpc.publicnode.com", "https://mainnet.base.org"]
           LEDGER = "data/settled_sales.jsonl"
-          STEP = 20000  # blocks per getLogs call
-          WINDOW = 10800  # ~6h of Base blocks, rescanned every run; known txs are skipped, so overlap is free
+          WINDOW = 108000  # 6h at Base's 0.2s blocks (18,000/h), rescanned every run; known txs are skipped
+          STEP = 45000  # public RPCs cap eth_getLogs at 50k blocks per call
           # No saved cursor on purpose: committing one every 15 minutes would redeploy Render every
           # 15 minutes. The job commits only when there is a real new payment.
 
