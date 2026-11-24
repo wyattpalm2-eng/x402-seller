@@ -47,7 +47,7 @@ const r = await payFetch("https://x402-seller-m8nx.onrender.com/vet?chain=base&a
 ## Endpoints
 
 <!-- pricing:start -->
-Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog) by `scripts/readme-pricing.mts` (32 paid routes). The 402 challenge is the price of record; this table is a copy of it.
+Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog) by `scripts/readme-pricing.mts` (33 paid routes). The 402 challenge is the price of record; this table is a copy of it.
 
 | Route | Price | What you get |
 |---|---|---|
@@ -83,6 +83,7 @@ Generated from the live [/catalog](https://x402-seller-m8nx.onrender.com/catalog
 | `GET /wx/ag/:lat/:lon` | $0.01 | Agricultural risk metrics from Open-Meteo: 13 hourly variables synthesized into a computed ag-risk score 0-100 with drought/excess-precip/high-wind/high-VPD/low-soil-moisture flags. |
 | `GET /wx/storm?lat=30.26&lon=-97.74` | $0.01 | Storm risk for any coordinate: resolves NOAA/NWS active-alert GeoJSON polygons with real point-in-polygon math, blends in wind and severity, and returns one scored risk verdict. |
 | `GET /yield/surface?chain=base` | $0.01 | Risk-adjusted yield surface across Base and Ethereum lending, DEX, and restaking pools -- pulls real pool data from yields.llama.fi, computes IL-risk-adjusted APY and cross-protocol TVL context, sorted by adjusted return. |
+| `GET /x402/check?url=https://… or ?payTo=0x…` | $0.005 | Should my agent pay this x402 seller? |
 <!-- pricing:end -->
 
 **Free:** `/` · `/demo/vet` · `/track-record` · `/examples` · `/catalog` · `/llms.txt` ·
